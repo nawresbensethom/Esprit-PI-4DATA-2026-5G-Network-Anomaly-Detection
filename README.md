@@ -182,7 +182,6 @@ pip install -r requirements.txt
 
 ## Contributors
 
-* Nawres Bensethom
 * Bouraoui Rahma
 * Cherif Safa
 * Mejri Ameni
