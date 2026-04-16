@@ -1,0 +1,131 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dashboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dashboard123}
+      POSTGRES_DB: ${POSTGRES_DB:-dashboard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dashboard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  auth-svc:
+    build: ./auth
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+      JWT_EXPIRY_MINUTES: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api-gateway:
+    build: ./gateway
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_SERVICE_URL: http://auth-svc:8001
+      UPLOAD_SERVICE_URL: http://upload-svc:8002
+      REPORT_SERVICE_URL: http://report-svc:8004
+      INFERENCE_SERVICE_URL: http://inference-svc:8003
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+      FRONTEND_ORIGIN: http://localhost:3000
+    depends_on:
+      - auth-svc
+
+  upload-svc:
+    build: ./upload
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_UPLOADS: uploads
+      INFERENCE_SERVICE_URL: http://inference-svc:8003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ./upload
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      INFERENCE_SERVICE_URL: http://inference-svc:8003
+      REPORT_SERVICE_URL: http://report-svc:8004
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  inference-svc:
+    build: ./inference
+    ports:
+      - "8003:8003"
+    environment:
+      MLOPS_ENDPOINT_URL: ${MLOPS_ENDPOINT_URL:-http://host.docker.internal:8080/predict}
+      REQUEST_TIMEOUT: 30
+      MAX_RETRIES: 3
+
+  report-svc:
+    build: ./report
+    ports:
+      - "8004:8004"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_EXPORTS: exports
+
+  frontend-svc:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api-gateway
+
+volumes:
+  pgdata:
+  miniodata:
