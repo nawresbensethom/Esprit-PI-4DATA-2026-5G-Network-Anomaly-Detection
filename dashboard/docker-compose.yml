@@ -52,7 +52,7 @@ services:
   api-gateway:
     build: ./gateway
     ports:
-      - "8000:8000"
+      - "8090:8090"
     environment:
       AUTH_SERVICE_URL: http://auth-svc:8001
       UPLOAD_SERVICE_URL: http://upload-svc:8002
@@ -102,9 +102,11 @@ services:
     ports:
       - "8003:8003"
     environment:
-      MLOPS_ENDPOINT_URL: ${MLOPS_ENDPOINT_URL:-http://host.docker.internal:8080/predict}
-      REQUEST_TIMEOUT: 30
-      MAX_RETRIES: 3
+      MLOPS_BASE_URL: ${MLOPS_BASE_URL:-http://host.docker.internal:8000}
+      MLOPS_API_KEY: ${MLOPS_API_KEY:-changeme}
+      MLOPS_TIMEOUT: 60
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   report-svc:
     build: ./report
@@ -122,7 +124,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8090}
     depends_on:
       - api-gateway
 

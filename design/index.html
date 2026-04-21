@@ -1,0 +1,2559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SENTRA · 6G Anomaly Detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* SENTRA — Attack Detection Dashboard */
+:root {
+  --bg: #fafaf9;
+  --bg-elev: #ffffff;
+  --bg-subtle: #f4f4f2;
+  --bg-hover: #f0efec;
+  --fg: #18181b;
+  --fg-muted: #71717a;
+  --fg-subtle: #a1a1aa;
+  --line: #e6e6e3;
+  --line-strong: #d4d4d0;
+  --accent: oklch(0.55 0.15 255);
+  --accent-fg: #ffffff;
+  --accent-soft: oklch(0.95 0.04 255);
+  --accent-border: oklch(0.85 0.08 255);
+  --critical: oklch(0.58 0.18 25);
+  --critical-soft: oklch(0.96 0.03 25);
+  --critical-border: oklch(0.85 0.08 25);
+  --warn-fg: oklch(0.60 0.14 60);
+  --warn-soft: oklch(0.97 0.04 85);
+  --warn-border: oklch(0.85 0.09 80);
+  --ok: oklch(0.58 0.12 155);
+  --ok-soft: oklch(0.96 0.03 155);
+  --ok-border: oklch(0.82 0.07 155);
+  --benign: oklch(0.58 0.12 155);
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.06);
+}
+
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --bg-elev: #121212;
+  --bg-subtle: #161616;
+  --bg-hover: #1c1c1c;
+  --fg: #fafafa;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #71717a;
+  --line: #222222;
+  --line-strong: #2a2a2a;
+  --accent: oklch(0.72 0.16 255);
+  --accent-fg: #0a0a0a;
+  --accent-soft: oklch(0.28 0.06 255);
+  --accent-border: oklch(0.38 0.08 255);
+  --critical: oklch(0.70 0.19 25);
+  --critical-soft: oklch(0.24 0.06 25);
+  --critical-border: oklch(0.36 0.10 25);
+  --warn-fg: oklch(0.78 0.15 75);
+  --warn-soft: oklch(0.24 0.04 75);
+  --warn-border: oklch(0.36 0.08 75);
+  --ok: oklch(0.72 0.14 155);
+  --ok-soft: oklch(0.22 0.04 155);
+  --ok-border: oklch(0.36 0.08 155);
+  --benign: oklch(0.72 0.14 155);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow: 0 1px 3px rgba(0,0,0,.35);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.5);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02","cv03","cv04","cv11";
+}
+button, input, select { font: inherit; color: inherit; }
+
+.mono { font-family: var(--mono); font-feature-settings: "tnum" 1; }
+.num { font-family: var(--mono); font-feature-settings: "tnum" 1; }
+
+/* App shell */
+.app { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+.sidebar {
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 2px;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px 14px;
+  color: var(--fg);
+}
+.brand-name {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.brand-tag {
+  font-size: 10px;
+  color: var(--fg-subtle);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-left: auto;
+  font-family: var(--mono);
+}
+.nav-section-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--fg-subtle); padding: 12px 8px 4px;
+  font-weight: 500;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: 6px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+  position: relative;
+}
+.nav-item:hover { background: var(--bg-hover); color: var(--fg); }
+.nav-item.active { background: var(--bg-hover); color: var(--fg); }
+.nav-item .nav-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--fg-subtle);
+  background: var(--bg-subtle);
+  padding: 1px 6px; border-radius: 10px;
+}
+.nav-item.active .nav-count { background: var(--accent-soft); color: var(--accent); }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.user-card {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.user-card:hover { background: var(--bg-hover); }
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 600;
+  flex-shrink: 0;
+}
+.user-info { min-width: 0; flex: 1; }
+.user-name { font-size: 12px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-role { font-size: 10px; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--mono); }
+
+/* Main */
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: 48px;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+  background: var(--bg);
+  position: sticky; top: 0; z-index: 10;
+}
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg-muted); }
+.crumbs .sep { color: var(--fg-subtle); }
+.crumbs .cur { color: var(--fg); font-weight: 500; }
+
+.topbar-spacer { flex: 1; }
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  width: 260px;
+  color: var(--fg-muted);
+}
+.search-box input {
+  background: transparent; border: 0; outline: 0;
+  flex: 1; font-size: 12px;
+  color: var(--fg);
+}
+.search-box input::placeholder { color: var(--fg-subtle); }
+.search-box .kbd {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--fg-subtle);
+  border: 1px solid var(--line-strong); border-radius: 3px;
+  padding: 0 4px;
+}
+
+.icon-btn {
+  background: transparent; border: 1px solid transparent;
+  border-radius: 6px; width: 28px; height: 28px;
+  display: grid; place-items: center;
+  color: var(--fg-muted); cursor: pointer;
+  position: relative;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--fg); border-color: var(--line); }
+.icon-btn .dot-ind {
+  position: absolute; top: 5px; right: 5px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--critical); border: 1.5px solid var(--bg);
+}
+
+.page {
+  padding: 20px 22px;
+  max-width: 1600px;
+  width: 100%;
+}
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 16px; gap: 16px;
+}
+.page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.page-desc { color: var(--fg-muted); font-size: 13px; margin-top: 2px; }
+.page-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Panel */
+.panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px;
+}
+.panel-title { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.panel-sub { font-size: 11px; color: var(--fg-subtle); margin-top: 1px; }
+.panel-actions { display: flex; gap: 6px; align-items: center; }
+.panel-body { padding: 14px; }
+
+/* KPI */
+.grid { display: grid; gap: 12px; }
+.kpi {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  position: relative;
+}
+.kpi-accent { border-color: var(--accent-border); background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-elev) 60%); }
+.kpi-label { font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-value { font-family: var(--mono); font-size: 26px; font-weight: 500; letter-spacing: -0.02em; margin-top: 2px; line-height: 1.1; }
+.kpi-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11px; color: var(--fg-muted); }
+.kpi-delta { display: inline-flex; align-items: center; gap: 2px; font-family: var(--mono); font-size: 11px; }
+.kpi-delta.up { color: var(--critical); }
+.kpi-delta.down { color: var(--ok); }
+.kpi-note { color: var(--fg-subtle); }
+
+/* Badge */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border: 1px solid;
+}
+.badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge-default { background: var(--bg-subtle); color: var(--fg-muted); border-color: var(--line); }
+.badge-accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+.badge-critical { background: var(--critical-soft); color: var(--critical); border-color: var(--critical-border); }
+.badge-warn { background: var(--warn-soft); color: var(--warn-fg); border-color: var(--warn-border); }
+.badge-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-border); }
+.badge-benign { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-border); }
+
+/* Button */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 10px; height: 28px;
+  border-radius: 6px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .1s;
+}
+.btn-sm { height: 24px; font-size: 11px; padding: 0 8px; gap: 4px; }
+.btn-lg { height: 34px; font-size: 13px; padding: 0 14px; }
+.btn-default { background: var(--bg-elev); color: var(--fg); border-color: var(--line-strong); }
+.btn-default:hover { background: var(--bg-hover); }
+.btn-primary { background: var(--fg); color: var(--bg); }
+.btn-primary:hover { opacity: .88; }
+.btn-accent { background: var(--accent); color: var(--accent-fg); }
+.btn-accent:hover { opacity: .9; }
+.btn-ghost { background: transparent; color: var(--fg-muted); }
+.btn-ghost:hover { background: var(--bg-hover); color: var(--fg); }
+.btn-danger { background: var(--bg-elev); color: var(--critical); border-color: var(--critical-border); }
+.btn-danger:hover { background: var(--critical-soft); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th {
+  text-align: left; font-weight: 500;
+  padding: 8px 12px;
+  color: var(--fg-subtle);
+  text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  background: var(--bg-elev);
+  position: sticky; top: 0;
+}
+.tbl th.sortable { cursor: pointer; user-select: none; }
+.tbl th.sortable:hover { color: var(--fg); }
+.tbl th.sorted { color: var(--fg); }
+.tbl td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.tbl tr { transition: background .08s; }
+.tbl tr:hover td { background: var(--bg-subtle); }
+.tbl tr.clickable { cursor: pointer; }
+.tbl tr.selected td { background: var(--accent-soft); }
+.tbl td.num, .tbl th.num { text-align: right; font-family: var(--mono); }
+.tbl-wrap { overflow-x: auto; }
+
+/* Chart labels */
+.chart-label { font-size: 9px; font-family: var(--mono); fill: var(--fg-subtle); }
+
+/* Hbar */
+.hbar { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+.hbar-label { width: 140px; font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar-track { flex: 1; height: 6px; background: var(--bg-subtle); border-radius: 2px; position: relative; }
+.hbar-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+.hbar-val { font-family: var(--mono); font-size: 11px; color: var(--fg); width: 54px; text-align: right; }
+
+/* Login */
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--bg);
+}
+.login-side {
+  background: var(--bg-subtle);
+  border-right: 1px solid var(--line);
+  padding: 36px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  position: relative; overflow: hidden;
+}
+.login-side::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: .5;
+  mask-image: radial-gradient(circle at 30% 40%, #000 30%, transparent 70%);
+  pointer-events: none;
+}
+.login-side > * { position: relative; }
+.login-form-wrap {
+  display: grid; place-items: center;
+  padding: 36px;
+}
+.login-form {
+  width: 100%; max-width: 340px;
+}
+.login-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; }
+.login-sub { color: var(--fg-muted); font-size: 13px; margin-bottom: 28px; }
+.form-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.form-label { font-size: 11px; color: var(--fg-muted); font-weight: 500; letter-spacing: 0.02em; }
+.form-input, .form-select {
+  height: 34px; padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  font-size: 13px;
+  color: var(--fg);
+  outline: none;
+}
+.form-input:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.form-hint { font-size: 11px; color: var(--fg-subtle); margin-top: 4px; }
+
+.hero-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  box-shadow: var(--shadow-lg);
+  width: min(460px, 100%);
+}
+.hero-card .row { display: flex; justify-content: space-between; padding: 4px 0; color: var(--fg-muted); }
+.hero-card .row .v { color: var(--fg); }
+
+/* Dashboard grid */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
+}
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-5 { grid-column: span 5; }
+.span-6 { grid-column: span 6; }
+.span-7 { grid-column: span 7; }
+.span-8 { grid-column: span 8; }
+.span-9 { grid-column: span 9; }
+.span-12 { grid-column: span 12; }
+
+/* Upload */
+.dropzone {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  padding: 48px 20px;
+  text-align: center;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  transition: all .15s;
+}
+.dropzone:hover, .dropzone.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.dropzone-icon {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  display: grid; place-items: center;
+  margin: 0 auto 12px;
+  color: var(--accent);
+}
+
+/* Job progress steps */
+.steps { display: flex; align-items: center; gap: 4px; }
+.step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px;
+  font-size: 11px; color: var(--fg-muted);
+  font-family: var(--mono);
+  flex: 1;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.step.done { color: var(--ok); border-color: var(--ok-border); background: var(--ok-soft); }
+.step.active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
+.step.failed { color: var(--critical); border-color: var(--critical-border); background: var(--critical-soft); }
+.step-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-strong);
+  flex-shrink: 0;
+}
+.step.done .step-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+.step.active .step-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.step.active .step-dot { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px transparent; } }
+
+.progress-bar {
+  width: 100%; height: 4px; background: var(--bg-subtle); border-radius: 2px; overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--accent); transition: width .3s;
+}
+
+/* Drift / Alert */
+.alert {
+  display: flex; gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 12px;
+  align-items: flex-start;
+}
+.alert-warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
+.alert-crit { background: var(--critical-soft); border-color: var(--critical-border); color: var(--critical); }
+.alert-info { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+.alert-title { font-weight: 600; margin-bottom: 2px; color: var(--fg); }
+.alert-body { color: var(--fg-muted); }
+.alert-actions { margin-left: auto; display: flex; gap: 6px; }
+
+/* Toggle */
+.toggle {
+  width: 30px; height: 18px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--accent); border-color: var(--accent); }
+.toggle-thumb {
+  position: absolute; top: 1px; left: 1px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff;
+  transition: transform .15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15);
+}
+.toggle.on .toggle-thumb { transform: translateX(12px); }
+
+/* Slider */
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--bg-subtle);
+  border-radius: 2px;
+  outline: none;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  background: var(--fg);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: var(--fg);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 0;
+}
+
+/* SHAP waterfall */
+.shap-row { display: grid; grid-template-columns: 110px 1fr 60px; gap: 10px; align-items: center; padding: 3px 0; }
+.shap-label { font-family: var(--mono); font-size: 11px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shap-bar { position: relative; height: 14px; }
+.shap-bar::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--line-strong);
+}
+.shap-bar-pos, .shap-bar-neg { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; }
+.shap-bar-pos { background: var(--critical); left: 50%; }
+.shap-bar-neg { background: var(--ok); right: 50%; }
+.shap-val { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--fg-muted); }
+
+/* Dropdown menu */
+.menu {
+  position: absolute;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 180px;
+  z-index: 100;
+}
+.menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--fg);
+}
+.menu-item:hover { background: var(--bg-hover); }
+.menu-item.destructive { color: var(--critical); }
+.menu-divider { height: 1px; background: var(--line); margin: 4px 0; }
+.menu-label { font-size: 10px; color: var(--fg-subtle); text-transform: uppercase; padding: 4px 10px; font-family: var(--mono); letter-spacing: 0.06em; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  display: grid; place-items: center;
+  z-index: 200;
+  animation: fadein .15s ease;
+}
+@keyframes fadein { from { opacity: 0; } }
+.modal {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  width: min(520px, 90vw);
+  max-height: 86vh;
+  overflow: auto;
+}
+.modal-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.modal-title { font-size: 14px; font-weight: 600; }
+.modal-body { padding: 18px; }
+.modal-foot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Details panel (slide-over) */
+.slideover-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.2);
+  z-index: 150; animation: fadein .15s ease;
+}
+.slideover {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(540px, 92vw);
+  background: var(--bg-elev);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  z-index: 160;
+  display: flex; flex-direction: column;
+  animation: slidein .18s ease;
+}
+@keyframes slidein { from { transform: translateX(16px); opacity: 0; } }
+.slideover-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.slideover-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+
+/* Tweaks panel */
+.tweaks-panel {
+  position: fixed;
+  bottom: 16px; right: 16px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  width: 260px;
+  padding: 12px;
+  z-index: 300;
+  font-size: 12px;
+}
+.tweaks-title {
+  font-size: 11px; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: var(--mono);
+  margin-bottom: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.tweak-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0;
+}
+.tweak-chips { display: flex; gap: 4px; }
+.tweak-chip {
+  font-size: 11px; font-family: var(--mono);
+  padding: 2px 8px; border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+.tweak-chip.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* Utility */
+.row { display: flex; align-items: center; gap: 8px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.gap-4 { gap: 4px; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
+.muted { color: var(--fg-muted); }
+.subtle { color: var(--fg-subtle); }
+.hlink { color: var(--accent); cursor: pointer; }
+.hlink:hover { text-decoration: underline; }
+.divider { height: 1px; background: var(--line); margin: 10px 0; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--fg-muted); }
+.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+.tag {
+  font-family: var(--mono); font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-subtle);
+  color: var(--fg-muted);
+  border: 1px solid var(--line);
+}
+
+.empty { text-align: center; padding: 48px 20px; color: var(--fg-muted); font-size: 13px; }
+
+/* Stat strip */
+.stat-strip {
+  display: flex; gap: 18px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  align-items: center;
+}
+.stat-strip .stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-strip .stat-label { font-size: 10px; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.06em; }
+.stat-strip .stat-value { font-family: var(--mono); font-size: 13px; }
+
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// Mock data for SENTRA dashboard
+window.SENTRA_DATA = (() => {
+  // Seeded RNG for stable data
+  let seed = 42;
+  const rand = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+
+  const ATTACK_TYPES = [
+    { key: 'benign', label: 'Benign', color: 'benign' },
+    { key: 'ddos_volumetric', label: 'DDoS · Volumetric', color: 'critical' },
+    { key: 'ddos_syn', label: 'DDoS · SYN flood', color: 'critical' },
+    { key: 'port_scan', label: 'Reconnaissance · Port scan', color: 'warn' },
+    { key: 'c2_beacon', label: 'C2 Beacon', color: 'critical' },
+    { key: 'data_exfil', label: 'Data exfiltration', color: 'critical' },
+    { key: 'mqtt_anomaly', label: 'MQTT anomaly', color: 'warn' },
+    { key: 'slice_breach', label: 'Slice isolation breach', color: 'warn' },
+  ];
+
+  const SLICES = ['URLLC', 'eMBB', 'mMTC'];
+
+  const FEATURES = [
+    'sTtl', 'dTtl', 'sHops', 'dHops', 'SrcWin_log', 'SrcPkts_log',
+    'SrcBytes_log', 'TotPkts_log', 'TotBytes_log', 'Rate_log',
+    'Offset_log', 'sMeanPktSz_log', 'SynAck_log', 'SrcLoad_log',
+    'Load_log', 'TcpRtt_log', 'DstTCPBase', 'SrcTCPBase',
+    'dDSb_ef', 'SrcLoss_ratio', 'State_ECO', 'State_REQ',
+    'State_RST', 'Proto_udp'
+  ];
+
+  function genIP() {
+    return `10.${(rand()*255)|0}.${(rand()*255)|0}.${(rand()*255)|0}`;
+  }
+
+  // Generate recent predictions
+  const predictions = [];
+  for (let i = 0; i < 140; i++) {
+    const r = rand();
+    const cls = r < 0.62 ? ATTACK_TYPES[0] : ATTACK_TYPES[1 + ((rand()*7)|0)];
+    const conf = cls.key === 'benign'
+      ? 0.55 + rand() * 0.44
+      : 0.70 + rand() * 0.29;
+    predictions.push({
+      id: `p_${1000+i}`,
+      row: i,
+      src: genIP(),
+      dst: genIP(),
+      proto: ['TCP','UDP','ICMP','TCP','TCP'][(rand()*5)|0],
+      slice: SLICES[(rand()*3)|0],
+      bytes: ((rand()*8000)|0) + 64,
+      pkts: ((rand()*120)|0) + 1,
+      cls: cls.key,
+      clsLabel: cls.label,
+      clsColor: cls.color,
+      conf: +conf.toFixed(4),
+      ts: Date.now() - i * 1000 * (30 + rand()*90),
+    });
+  }
+
+  // Distribution
+  const classDist = {};
+  for (const t of ATTACK_TYPES) classDist[t.key] = 0;
+  for (const p of predictions) classDist[p.cls]++;
+
+  // Confidence histogram
+  const confBuckets = [
+    { range: '0.5–0.6', count: 0 },
+    { range: '0.6–0.7', count: 0 },
+    { range: '0.7–0.8', count: 0 },
+    { range: '0.8–0.9', count: 0 },
+    { range: '0.9–1.0', count: 0 },
+  ];
+  for (const p of predictions) {
+    const idx = Math.min(4, Math.max(0, Math.floor((p.conf - 0.5) * 10)));
+    confBuckets[idx].count++;
+  }
+
+  // Trend (last 24 hours, per hour)
+  const trend = [];
+  for (let h = 23; h >= 0; h--) {
+    const base = 40 + Math.sin(h/3) * 15 + rand() * 20;
+    const attacks = Math.max(0, base * (0.25 + rand()*0.2));
+    trend.push({
+      hour: h,
+      label: `${String((new Date().getHours() - h + 24) % 24).padStart(2,'0')}:00`,
+      total: Math.round(base + attacks),
+      attacks: Math.round(attacks),
+      benign: Math.round(base),
+    });
+  }
+
+  // Jobs history
+  const FILES = [
+    'cicflow_6g_urllc_2026-04-19.csv',
+    'ton_iot_embb_batch_042.csv',
+    'capture_mmtc_nodes_edge07.csv',
+    'slice_a_flows_1200Z.csv',
+    'ran_telemetry_2026-04-18.csv',
+    'edge_agg_firewall_019.csv',
+    'corp_vpn_egress_0417.csv',
+    'iot_gateway_42_hourly.csv',
+    'slice_b_flows_0600Z.csv',
+    'cicflow_6g_urllc_2026-04-17.csv',
+    'probe_hexa_ring3.csv',
+    'bsr_handover_042.csv',
+  ];
+  const STATUSES = ['completed','completed','completed','completed','failed','completed','completed','completed','running','completed','completed','completed'];
+  const jobs = FILES.map((f, i) => {
+    const rows = 1200 + ((rand()*40000)|0);
+    const attackRate = 0.08 + rand() * 0.45;
+    const status = STATUSES[i];
+    return {
+      id: `job_${(8423 + i).toString(16)}`,
+      filename: f,
+      rows,
+      attackRate: +attackRate.toFixed(3),
+      attacks: Math.round(rows * attackRate),
+      status,
+      created: Date.now() - i * 1000 * 60 * (45 + rand()*300),
+      duration: 8 + ((rand()*240)|0),
+      drift: i === 2 || i === 5,
+      fairness: i === 7,
+      model: i % 3 === 0 ? 'xgboost-5g-v2.1' : 'autoencoder-6g-v1.4',
+      slice: SLICES[(rand()*3)|0],
+    };
+  });
+
+  // SHAP values for a sample
+  const shap = [
+    { feature: 'SrcBytes_log', value: 0.34, abs: 0.34 },
+    { feature: 'Rate_log', value: 0.21, abs: 0.21 },
+    { feature: 'SynAck_log', value: 0.18, abs: 0.18 },
+    { feature: 'TcpRtt_log', value: -0.12, abs: 0.12 },
+    { feature: 'sTtl', value: 0.09, abs: 0.09 },
+    { feature: 'State_RST', value: 0.07, abs: 0.07 },
+    { feature: 'sHops', value: -0.06, abs: 0.06 },
+    { feature: 'Proto_udp', value: 0.04, abs: 0.04 },
+    { feature: 'SrcLoss_ratio', value: -0.03, abs: 0.03 },
+    { feature: 'DstTCPBase', value: 0.02, abs: 0.02 },
+  ];
+
+  // Users for admin page
+  const users = [
+    { id: 'u1', name: 'Admin User', email: 'admin@sentra.io', role: 'admin', active: true, last: Date.now() - 1000*60*3 },
+    { id: 'u2', name: 'Leïla Ben Amor', email: 'leila.ba@sentra.io', role: 'analyst', active: true, last: Date.now() - 1000*60*18 },
+    { id: 'u3', name: 'Marcus Odili', email: 'm.odili@sentra.io', role: 'analyst', active: true, last: Date.now() - 1000*60*120 },
+    { id: 'u4', name: 'Yuki Tanaka', email: 'y.tanaka@sentra.io', role: 'ml_engineer', active: true, last: Date.now() - 1000*60*60*6 },
+    { id: 'u5', name: 'Rania Kacem', email: 'r.kacem@sentra.io', role: 'analyst', active: false, last: Date.now() - 1000*60*60*24*14 },
+    { id: 'u6', name: 'Dmitri Volkov', email: 'd.volkov@sentra.io', role: 'ml_engineer', active: true, last: Date.now() - 1000*60*60*48 },
+    { id: 'u7', name: 'Sara Nouri', email: 's.nouri@sentra.io', role: 'analyst', active: true, last: Date.now() - 1000*60*34 },
+  ];
+
+  // Drift report
+  const drift = {
+    triggered: true,
+    features: [
+      { name: 'Rate_log', ks: 0.31, p: 0.003, drifted: true },
+      { name: 'SrcBytes_log', ks: 0.24, p: 0.012, drifted: true },
+      { name: 'SynAck_log', ks: 0.19, p: 0.041, drifted: true },
+      { name: 'TcpRtt_log', ks: 0.11, p: 0.089, drifted: false },
+      { name: 'sTtl', ks: 0.08, p: 0.21, drifted: false },
+    ],
+  };
+
+  // Fairness
+  const fairness = [
+    { slice: 'URLLC', recall: 0.94, precision: 0.91, support: 12430 },
+    { slice: 'eMBB', recall: 0.88, precision: 0.86, support: 18200 },
+    { slice: 'mMTC', recall: 0.72, precision: 0.81, support: 9842 },
+  ];
+
+  return {
+    ATTACK_TYPES, SLICES, FEATURES,
+    predictions, classDist, confBuckets, trend,
+    jobs, shap, users, drift, fairness,
+  };
+})();
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// Shared primitives
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+function cls(...xs) { return xs.filter(Boolean).join(' '); }
+
+function fmtN(n) {
+  if (n == null) return '—';
+  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+'k';
+  return Math.round(n).toLocaleString();
+}
+function fmtPct(n, d=1) { return (n*100).toFixed(d)+'%'; }
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const now = Date.now();
+  const diff = (now - ts)/1000;
+  if (diff < 60) return `${Math.floor(diff)}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+function fmtDate(ts) {
+  return new Date(ts).toLocaleString('en-US', { month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+}
+function fmtDur(s) {
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s/60)}m ${s%60}s`;
+}
+
+// Logo mark
+function Mark({ size=20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      <rect x="1" y="1" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.4" opacity=".35"/>
+      <rect x="5" y="5" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4" opacity=".7"/>
+      <rect x="8.5" y="8.5" width="3" height="3" fill="currentColor"/>
+    </svg>
+  );
+}
+
+// Tiny icon set
+const Icons = {
+  dash: <path d="M3 3h7v7H3zM12 3h6v4h-6zM12 9h6v9h-6zM3 12h7v6H3z" fill="none" stroke="currentColor" strokeWidth="1.4"/>,
+  upload: <path d="M10 13V3m0 0l-4 4m4-4l4 4M4 15h12v2H4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>,
+  history: <path d="M10 4a6 6 0 106 6M10 4V2m0 2H8m2 3v3l2 1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>,
+  results: <path d="M3 4h14M3 8h14M3 12h10M3 16h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>,
+  drift: <path d="M3 14l4-4 3 3 7-7M13 6h4v4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>,
+  users: <path d="M7 9a3 3 0 100-6 3 3 0 000 6zM2 17c0-3 2-5 5-5s5 2 5 5M14 10a2.5 2.5 0 100-5M18 17c0-2.5-1.7-4-4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>,
+  settings: <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.5 1.5M14.2 14.2l1.5 1.5M4.3 15.7l1.5-1.5M14.2 5.8l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  model: <path d="M10 2l7 4v8l-7 4-7-4V6zM3 6l7 4 7-4M10 10v8" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>,
+  search: <path d="M9 15a6 6 0 100-12 6 6 0 000 12zM14 14l3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  bell: <path d="M5 8a5 5 0 0110 0v3l1.5 2.5h-13L5 11zM8 16a2 2 0 004 0" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>,
+  chev: <path d="M5 7l5 5 5-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  check: <path d="M4 10l3.5 3.5L16 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>,
+  x: <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>,
+  up: <path d="M6 13l4-4 4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  down: <path d="M6 7l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  dot: <circle cx="10" cy="10" r="3" fill="currentColor"/>,
+  warn: <path d="M10 2L18 17H2L10 2zM10 8v4M10 14v.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>,
+  info: <path d="M10 17a7 7 0 100-14 7 7 0 000 14zM10 9v5M10 6.5v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  file: <path d="M5 2h7l3 3v13H5zM12 2v3h3" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>,
+  play: <path d="M6 4l10 6-10 6V4z" fill="currentColor"/>,
+  pause: <path d="M6 4h3v12H6zM11 4h3v12h-3z" fill="currentColor"/>,
+  download: <path d="M10 3v10m0 0l-4-4m4 4l4-4M4 17h12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>,
+  filter: <path d="M3 5h14l-5 7v4l-4 2v-6z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>,
+  sort: <path d="M7 4v12m0 0l-3-3m3 3l3-3M13 16V4m0 0l-3 3m3-3l3 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>,
+  plus: <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>,
+  more: <circle cx="5" cy="10" r="1.4" fill="currentColor"/>,
+  arrow: <path d="M4 10h12m0 0l-4-4m4 4l-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none"/>,
+  logo: null,
+};
+function Icon({ name, size=16, className='' }) {
+  return <svg width={size} height={size} viewBox="0 0 20 20" className={className}>{Icons[name]}</svg>;
+}
+
+// Badge
+function Badge({ tone='default', children, dot=false }) {
+  return <span className={cls('badge', `badge-${tone}`)}>
+    {dot && <span className="badge-dot" />}
+    {children}
+  </span>;
+}
+
+// Button
+function Button({ variant='default', size='md', children, onClick, icon, disabled, type='button', className='' }) {
+  return <button type={type} onClick={onClick} disabled={disabled}
+    className={cls('btn', `btn-${variant}`, `btn-${size}`, className)}>
+    {icon && <Icon name={icon} size={14} />}
+    {children}
+  </button>;
+}
+
+// KPI card
+function Kpi({ label, value, sub, delta, note, accent }) {
+  const up = delta != null && delta > 0;
+  return (
+    <div className={cls('kpi', accent && 'kpi-accent')}>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value">{value}</div>
+      <div className="kpi-sub">
+        {delta != null && (
+          <span className={cls('kpi-delta', up ? 'up' : 'down')}>
+            <Icon name={up ? 'up' : 'down'} size={12} />
+            {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
+        <span className="kpi-note">{sub || note}</span>
+      </div>
+    </div>
+  );
+}
+
+// Card/Panel
+function Panel({ title, subtitle, actions, children, className='', padding=true }) {
+  return (
+    <div className={cls('panel', className)}>
+      {(title || actions) && (
+        <div className="panel-head">
+          <div>
+            {title && <div className="panel-title">{title}</div>}
+            {subtitle && <div className="panel-sub">{subtitle}</div>}
+          </div>
+          {actions && <div className="panel-actions">{actions}</div>}
+        </div>
+      )}
+      <div className={cls(padding && 'panel-body')}>{children}</div>
+    </div>
+  );
+}
+
+// Spark line
+function Sparkline({ data, stroke='var(--accent)', fill=false, height=40 }) {
+  if (!data || !data.length) return null;
+  const w = 100, h = height;
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 2) - 1;
+    return [x, y];
+  });
+  const path = 'M ' + pts.map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' L ');
+  const fillPath = fill ? path + ` L ${w},${h} L 0,${h} Z` : null;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width:'100%', height }}>
+      {fill && <path d={fillPath} fill={stroke} opacity=".08"/>}
+      <path d={path} stroke={stroke} strokeWidth="1.2" fill="none" vectorEffect="non-scaling-stroke"/>
+    </svg>
+  );
+}
+
+// Minimal line chart
+function LineChart({ series, height=180, yLabels=true, annotations=[] }) {
+  // series: [{ name, color, data: [{x, y}], style: 'line'|'area' }]
+  const w = 600;
+  const padL = 28, padR = 6, padT = 8, padB = 20;
+  const all = series.flatMap(s => s.data.map(p => p.y));
+  const max = Math.max(...all, 0);
+  const min = Math.min(...all, 0);
+  const xs = series[0].data.map(p => p.x);
+  const xMax = xs.length - 1;
+  const X = i => padL + (i/xMax) * (w - padL - padR);
+  const Y = v => padT + (1 - (v - min)/(max - min || 1)) * (height - padT - padB);
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} style={{ width:'100%', height, display:'block' }}>
+      {yLabels && [0, .5, 1].map((t, i) => {
+        const y = padT + t * (height - padT - padB);
+        const v = max - t * (max - min);
+        return <g key={i}>
+          <line x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--line)" strokeDasharray="2 3" opacity=".6"/>
+          <text x={padL-4} y={y+3} textAnchor="end" className="chart-label">{fmtN(v)}</text>
+        </g>;
+      })}
+      {series.map((s, i) => {
+        const path = 'M ' + s.data.map((p, j) => `${X(j)},${Y(p.y)}`).join(' L ');
+        const area = path + ` L ${X(xMax)},${Y(0)} L ${X(0)},${Y(0)} Z`;
+        return <g key={i}>
+          {s.style === 'area' && <path d={area} fill={s.color} opacity=".1"/>}
+          <path d={path} stroke={s.color} strokeWidth="1.4" fill="none"/>
+        </g>;
+      })}
+      {series[0].data.map((p, j) => (
+        j % Math.ceil(xMax/6) === 0 && <text key={j} x={X(j)} y={height-6} textAnchor="middle" className="chart-label">{p.label || p.x}</text>
+      ))}
+      {annotations.map((a,i) => (
+        <g key={i}>
+          <line x1={X(a.x)} x2={X(a.x)} y1={padT} y2={height-padB} stroke="var(--warn-fg)" strokeDasharray="3 2" opacity=".7"/>
+          <text x={X(a.x)+3} y={padT+10} className="chart-label" fill="var(--warn-fg)">{a.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// Horizontal bar
+function HBar({ data, max, color='var(--accent)', height=14, label, value }) {
+  const pct = Math.min(100, (data/max)*100);
+  return (
+    <div className="hbar">
+      {label && <div className="hbar-label">{label}</div>}
+      <div className="hbar-track">
+        <div className="hbar-fill" style={{ width: pct+'%', background: color }}/>
+      </div>
+      {value && <div className="hbar-val">{value}</div>}
+    </div>
+  );
+}
+
+// Donut
+function Donut({ segments, size=140, thickness=16 }) {
+  // segments: [{ label, value, color }]
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  const r = (size - thickness)/2;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--line)" strokeWidth={thickness}/>
+      {segments.map((s, i) => {
+        const len = (s.value/total) * c;
+        const dash = `${len} ${c-len}`;
+        const el = <circle key={i} cx={size/2} cy={size/2} r={r} fill="none"
+          stroke={s.color} strokeWidth={thickness}
+          strokeDasharray={dash} strokeDashoffset={-offset}
+          transform={`rotate(-90 ${size/2} ${size/2})`}/>;
+        offset += len;
+        return el;
+      })}
+    </svg>
+  );
+}
+
+Object.assign(window, { cls, fmtN, fmtPct, fmtTime, fmtDate, fmtDur, Mark, Icon, Badge, Button, Kpi, Panel, Sparkline, LineChart, HBar, Donut });
+
+</script>
+<script type="text/babel" data-presets="react">
+// Sidebar / shell / topbar
+const NAV_BY_ROLE = {
+  analyst: [
+    { section: 'Workspace' },
+    { key: 'dashboard', label: 'Dashboard', icon: 'dash' },
+    { key: 'upload', label: 'New scan', icon: 'upload' },
+    { key: 'history', label: 'History', icon: 'history', count: 12 },
+    { key: 'results', label: 'Results', icon: 'results' },
+  ],
+  admin: [
+    { section: 'Workspace' },
+    { key: 'dashboard', label: 'Dashboard', icon: 'dash' },
+    { key: 'upload', label: 'New scan', icon: 'upload' },
+    { key: 'history', label: 'History', icon: 'history', count: 12 },
+    { key: 'results', label: 'Results', icon: 'results' },
+    { section: 'Administration' },
+    { key: 'users', label: 'Users', icon: 'users', count: 7 },
+    { key: 'settings', label: 'Thresholds & config', icon: 'settings' },
+    { key: 'drift', label: 'Drift & fairness', icon: 'drift', count: 2, badge: 'warn' },
+  ],
+  ml_engineer: [
+    { section: 'Workspace' },
+    { key: 'dashboard', label: 'Dashboard', icon: 'dash' },
+    { key: 'history', label: 'History', icon: 'history', count: 12 },
+    { key: 'results', label: 'Results', icon: 'results' },
+    { section: 'Models' },
+    { key: 'drift', label: 'Drift & fairness', icon: 'drift', count: 2, badge: 'warn' },
+    { key: 'model', label: 'Model registry', icon: 'model' },
+  ],
+};
+
+const ROLE_LABELS = { analyst: 'Security Analyst', admin: 'Administrator', ml_engineer: 'ML Engineer' };
+
+function Sidebar({ route, setRoute, role, user, onSignOut }) {
+  const items = NAV_BY_ROLE[role] || NAV_BY_ROLE.analyst;
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <Mark size={20}/>
+        <div className="brand-name">SENTRA</div>
+        <div className="brand-tag">v2.4</div>
+      </div>
+      {items.map((it, i) => it.section
+        ? <div key={i} className="nav-section-label">{it.section}</div>
+        : (
+          <div key={it.key}
+            className={cls('nav-item', route === it.key && 'active')}
+            onClick={() => setRoute(it.key)}>
+            <Icon name={it.icon} size={15}/>
+            <span>{it.label}</span>
+            {it.count != null && <span className="nav-count">{it.count}</span>}
+          </div>
+        )
+      )}
+      <div className="sidebar-footer">
+        <div className="user-card" onClick={onSignOut} title="Sign out">
+          <div className="avatar">{user.name.split(' ').map(n=>n[0]).slice(0,2).join('')}</div>
+          <div className="user-info">
+            <div className="user-name">{user.name}</div>
+            <div className="user-role">{ROLE_LABELS[role]}</div>
+          </div>
+          <Icon name="chev" size={14}/>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ crumbs, actions, onCmd }) {
+  return (
+    <div className="topbar">
+      <div className="crumbs">
+        {crumbs.map((c, i) => <React.Fragment key={i}>
+          {i > 0 && <span className="sep">/</span>}
+          <span className={i === crumbs.length-1 ? 'cur' : ''}>{c}</span>
+        </React.Fragment>)}
+      </div>
+      <div className="topbar-spacer"/>
+      <div className="search-box">
+        <Icon name="search" size={14}/>
+        <input placeholder="Search jobs, IPs, CVEs…"/>
+        <span className="kbd">⌘K</span>
+      </div>
+      <button className="icon-btn" title="Notifications">
+        <Icon name="bell" size={15}/>
+        <span className="dot-ind"/>
+      </button>
+      {actions}
+    </div>
+  );
+}
+
+Object.assign(window, { Sidebar, Topbar, NAV_BY_ROLE, ROLE_LABELS });
+
+</script>
+<script type="text/babel" data-presets="react">
+// Login screen
+function LoginScreen({ onLogin, role, setRole, theme }) {
+  const [email, setEmail] = useState('admin@sentra.io');
+  const [pw, setPw] = useState('Admin123!');
+  const [loading, setLoading] = useState(false);
+
+  function submit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setTimeout(() => onLogin(), 450);
+  }
+
+  return (
+    <div className="login-shell">
+      <div className="login-side">
+        <div className="row" style={{ gap: 10, color: 'var(--fg)' }}>
+          <Mark size={22}/>
+          <div className="brand-name" style={{ fontSize: 16 }}>SENTRA</div>
+          <div className="brand-tag">v2.4</div>
+        </div>
+        <div style={{ maxWidth: 460 }}>
+          <div className="tag" style={{ marginBottom: 12 }}>6G · ANOMALY DETECTION</div>
+          <h1 style={{ fontSize: 28, letterSpacing: '-0.02em', fontWeight: 600, margin: 0, lineHeight: 1.2 }}>
+            Sub-second attack classification for sliced&nbsp;6G networks.
+          </h1>
+          <p className="muted" style={{ fontSize: 14, marginTop: 14, maxWidth: 420 }}>
+            Batch inference, SHAP explanations, drift monitoring, and per-slice fairness — in one analyst console.
+          </p>
+          <div className="hero-card" style={{ marginTop: 24 }}>
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Live · last 24h</span>
+              <Badge tone="ok" dot>operational</Badge>
+            </div>
+            <div className="row"><span>predictions.total</span><span className="v" style={{ marginLeft: 'auto' }}>1,842,309</span></div>
+            <div className="row"><span>predictions.attacks</span><span className="v" style={{ marginLeft: 'auto' }}>73,148</span></div>
+            <div className="row"><span>avg_confidence</span><span className="v" style={{ marginLeft: 'auto' }}>0.912</span></div>
+            <div className="row"><span>inference.p95_ms</span><span className="v" style={{ marginLeft: 'auto' }}>48</span></div>
+            <div className="row"><span>drift_alerts</span><span className="v" style={{ marginLeft: 'auto', color: 'var(--warn-fg)' }}>2</span></div>
+          </div>
+        </div>
+        <div className="muted" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>© 2026 SENTRA Labs · build e14b2a</div>
+      </div>
+      <div className="login-form-wrap">
+        <form className="login-form" onSubmit={submit}>
+          <h2 className="login-title">Sign in</h2>
+          <p className="login-sub">Access the detection console.</p>
+
+          <div className="form-field">
+            <label className="form-label">Email</label>
+            <input className="form-input" value={email} onChange={e=>setEmail(e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Password</label>
+            <input className="form-input" type="password" value={pw} onChange={e=>setPw(e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Role</label>
+            <select className="form-select" value={role} onChange={e=>setRole(e.target.value)}>
+              <option value="analyst">Security Analyst</option>
+              <option value="admin">Administrator</option>
+              <option value="ml_engineer">ML Engineer</option>
+            </select>
+            <div className="form-hint">Demo: role selector — normally derived from user record.</div>
+          </div>
+
+          <Button type="submit" variant="primary" size="lg" className="btn-block" disabled={loading}>
+            {loading ? 'Authenticating…' : 'Continue'} <Icon name="arrow" size={14}/>
+          </Button>
+
+          <div className="divider"/>
+          <div className="subtle" style={{ fontSize: 11, fontFamily: 'var(--mono)', textAlign: 'center' }}>
+            SSO · SAML · MFA  ·  2026.04.20
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LoginScreen });
+
+</script>
+<script type="text/babel" data-presets="react">
+// Dashboard page
+function DashboardPage({ data, threshold, onNavigate }) {
+  const [selected, setSelected] = useState(null);
+
+  // recompute KPIs based on threshold
+  const predictions = useMemo(() => data.predictions.map(p => ({
+    ...p,
+    thresholdedClass: p.cls === 'benign' ? 'benign' : (p.conf >= threshold ? p.cls : 'benign'),
+  })), [data.predictions, threshold]);
+
+  const attackCount = predictions.filter(p => p.thresholdedClass !== 'benign').length;
+  const total = predictions.length;
+  const attackRate = attackCount / total;
+  const avgConf = predictions.reduce((s,p)=>s+p.conf,0)/total;
+
+  // Trend data — use data.trend
+  const lineSeries = [
+    { name: 'Total flows', color: 'var(--fg-subtle)', style: 'line',
+      data: data.trend.map((t,i) => ({ x: i, label: t.label, y: t.total })) },
+    { name: 'Attacks', color: 'var(--critical)', style: 'area',
+      data: data.trend.map((t,i) => ({ x: i, label: t.label, y: t.attacks })) },
+  ];
+
+  // Attack distribution (donut)
+  const typeColors = {
+    benign: 'var(--ok)',
+    ddos_volumetric: 'oklch(0.58 0.18 25)',
+    ddos_syn: 'oklch(0.65 0.18 15)',
+    port_scan: 'oklch(0.70 0.14 70)',
+    c2_beacon: 'oklch(0.50 0.18 320)',
+    data_exfil: 'oklch(0.55 0.18 0)',
+    mqtt_anomaly: 'oklch(0.68 0.12 100)',
+    slice_breach: 'oklch(0.62 0.14 50)',
+  };
+  const classCounts = {};
+  predictions.forEach(p => { classCounts[p.thresholdedClass] = (classCounts[p.thresholdedClass]||0) + 1; });
+  const segments = data.ATTACK_TYPES.filter(t => (classCounts[t.key]||0) > 0).map(t => ({
+    label: t.label, value: classCounts[t.key]||0, color: typeColors[t.key],
+  }));
+
+  // Confidence histogram
+  const confBuckets = [0,0,0,0,0];
+  predictions.forEach(p => { const i = Math.min(4, Math.max(0, Math.floor((p.conf-0.5)*10))); confBuckets[i]++; });
+  const maxConf = Math.max(...confBuckets);
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Detection overview</h1>
+          <div className="page-desc">Live view · last 24 hours · model <span className="mono">autoencoder-6g-v1.4</span></div>
+        </div>
+        <div className="page-actions">
+          <Badge tone="ok" dot>all systems operational</Badge>
+          <Button variant="default" size="md" icon="download">Export</Button>
+          <Button variant="primary" size="md" icon="upload" onClick={() => onNavigate('upload')}>New scan</Button>
+        </div>
+      </div>
+
+      {/* Drift alert */}
+      <div className="alert alert-warn" style={{ marginBottom: 12 }}>
+        <Icon name="warn" size={16}/>
+        <div>
+          <div className="alert-title">Concept drift detected on 3 features in job <span className="mono">job_3319</span></div>
+          <div className="alert-body">Rate_log (KS=0.31, p=0.003), SrcBytes_log (KS=0.24, p=0.012), SynAck_log (KS=0.19, p=0.041). Consider retraining.</div>
+        </div>
+        <div className="alert-actions">
+          <Button variant="ghost" size="sm" onClick={() => onNavigate('drift')}>Review</Button>
+          <Button variant="ghost" size="sm">Dismiss</Button>
+        </div>
+      </div>
+
+      <div className="grid dash-grid" style={{ marginBottom: 12 }}>
+        <div className="span-3"><Kpi label="Predictions (24h)" value={fmtN(total*13200)} delta={8.2} sub="vs. prev 24h"/></div>
+        <div className="span-3"><Kpi label="Attack rate" value={fmtPct(attackRate)} delta={-2.3} sub={`threshold ${threshold.toFixed(2)}`}/></div>
+        <div className="span-3"><Kpi label="Avg confidence" value={avgConf.toFixed(3)} sub="across all classes"/></div>
+        <div className="span-3"><Kpi label="Active jobs" value="3" accent sub="2 running · 1 queued"/></div>
+      </div>
+
+      <div className="grid dash-grid">
+        <div className="span-8">
+          <Panel title="Detection volume" subtitle="flows per hour, attacks highlighted"
+            actions={<>
+              <div className="legend">
+                <span><span className="legend-dot" style={{ background: 'var(--fg-subtle)' }}/>total</span>
+                <span><span className="legend-dot" style={{ background: 'var(--critical)' }}/>attacks</span>
+              </div>
+              <Button variant="ghost" size="sm">24h</Button>
+              <Button variant="ghost" size="sm">7d</Button>
+            </>}>
+            <LineChart series={lineSeries} height={220} annotations={[{ x: 4, label: 'drift' }]}/>
+          </Panel>
+        </div>
+
+        <div className="span-4">
+          <Panel title="Attack distribution" subtitle={`${attackCount.toLocaleString()} malicious · ${(total-attackCount).toLocaleString()} benign`}>
+            <div className="row" style={{ alignItems: 'center', gap: 18 }}>
+              <div style={{ position: 'relative' }}>
+                <Donut segments={segments} size={140} thickness={14}/>
+                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+                  <div>
+                    <div className="mono" style={{ fontSize: 18, fontWeight: 500 }}>{fmtPct(attackRate, 0)}</div>
+                    <div className="subtle" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>attack rate</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {segments.slice(0, 6).map((s,i) => (
+                  <div key={i} className="row" style={{ padding: '3px 0', fontSize: 11 }}>
+                    <span className="legend-dot" style={{ background: s.color }}/>
+                    <span className="truncate" style={{ flex: 1 }}>{s.label}</span>
+                    <span className="mono muted">{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="span-5">
+          <Panel title="Confidence distribution" subtitle="bucketed [0.5, 1.0]">
+            <div style={{ padding: '2px 0 6px' }}>
+              {['0.5–0.6','0.6–0.7','0.7–0.8','0.8–0.9','0.9–1.0'].map((r,i) => (
+                <HBar key={i} label={r} data={confBuckets[i]} max={maxConf}
+                  color={i>=3 ? 'var(--accent)' : 'var(--fg-subtle)'}
+                  value={confBuckets[i]}/>
+              ))}
+            </div>
+            <div className="divider"/>
+            <div className="row" style={{ justifyContent: 'space-between', fontSize: 11 }}>
+              <span className="muted">mean</span><span className="mono">{avgConf.toFixed(4)}</span>
+              <span className="muted">p50</span><span className="mono">0.876</span>
+              <span className="muted">p95</span><span className="mono">0.982</span>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="span-7">
+          <Panel title="Per-slice telemetry" subtitle="live recall & precision by network slice"
+            actions={<Badge tone="warn" dot>mMTC · recall below SLA</Badge>}>
+            <table className="tbl">
+              <thead><tr>
+                <th>Slice</th><th>SLA</th><th className="num">Support</th><th className="num">Recall</th><th className="num">Precision</th><th>Status</th>
+              </tr></thead>
+              <tbody>
+                {data.fairness.map(f => {
+                  const ok = f.recall >= 0.8;
+                  return <tr key={f.slice}>
+                    <td><span className="mono">{f.slice}</span></td>
+                    <td className="muted">{f.slice==='URLLC'?'1ms · 99.999%':f.slice==='eMBB'?'10Gbps':'10⁶ dev/km²'}</td>
+                    <td className="num muted">{f.support.toLocaleString()}</td>
+                    <td className="num"><span className={cls(ok?'':'muted')} style={{ color: ok?'var(--ok)':'var(--critical)'}}>{f.recall.toFixed(3)}</span></td>
+                    <td className="num">{f.precision.toFixed(3)}</td>
+                    <td><Badge tone={ok?'ok':'critical'} dot>{ok?'within SLA':'below SLA'}</Badge></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </Panel>
+        </div>
+
+        <div className="span-12">
+          <Panel title="Recent predictions" subtitle={`${total} rows · auto-refresh 10s`}
+            actions={<>
+              <Button variant="ghost" size="sm" icon="filter">Filter</Button>
+              <Button variant="ghost" size="sm" icon="download">Export</Button>
+              <Button variant="ghost" size="sm" onClick={() => onNavigate('results')}>View all →</Button>
+            </>}>
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead><tr>
+                  <th>#</th><th>Source → Dest</th><th>Proto</th><th>Slice</th>
+                  <th className="num">Bytes</th><th className="num">Pkts</th>
+                  <th>Prediction</th><th className="num">Confidence</th>
+                  <th>Time</th><th></th>
+                </tr></thead>
+                <tbody>
+                  {predictions.slice(0, 14).map(p => (
+                    <tr key={p.id} className="clickable" onClick={() => setSelected(p)}>
+                      <td className="mono muted">{String(p.row).padStart(4,'0')}</td>
+                      <td>
+                        <span className="mono">{p.src}</span>
+                        <span className="subtle" style={{ margin: '0 6px' }}>→</span>
+                        <span className="mono">{p.dst}</span>
+                      </td>
+                      <td><span className="tag">{p.proto}</span></td>
+                      <td><span className="mono muted">{p.slice}</span></td>
+                      <td className="num">{fmtN(p.bytes)}</td>
+                      <td className="num">{p.pkts}</td>
+                      <td>
+                        <Badge tone={p.clsColor === 'critical' ? 'critical' : p.clsColor === 'warn' ? 'warn' : 'benign'} dot>
+                          {p.clsLabel}
+                        </Badge>
+                      </td>
+                      <td className="num">
+                        <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                          <div style={{ width: 36, height: 4, background: 'var(--bg-subtle)', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ width: `${p.conf*100}%`, height: '100%', background: p.conf > 0.8 ? 'var(--critical)' : 'var(--accent)' }}/>
+                          </div>
+                          <span>{p.conf.toFixed(4)}</span>
+                        </div>
+                      </td>
+                      <td className="muted">{fmtTime(p.ts)}</td>
+                      <td><span className="hlink" style={{ fontSize: 11 }}>Explain →</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
+      </div>
+
+      {selected && <PredictionDetail prediction={selected} data={data} onClose={() => setSelected(null)}/>}
+    </>
+  );
+}
+
+function PredictionDetail({ prediction: p, data, onClose }) {
+  const shap = data.shap;
+  const maxAbs = Math.max(...shap.map(s => s.abs));
+  const basePred = shap.reduce((s,x) => s+x.value, 0);
+  return (
+    <>
+      <div className="slideover-backdrop" onClick={onClose}/>
+      <div className="slideover">
+        <div className="slideover-head">
+          <div>
+            <div className="row" style={{ gap: 8 }}>
+              <Badge tone={p.clsColor === 'critical' ? 'critical' : p.clsColor === 'warn' ? 'warn' : 'benign'} dot>{p.clsLabel}</Badge>
+              <span className="mono muted" style={{ fontSize: 11 }}>row {p.row} · {p.id}</span>
+            </div>
+            <div style={{ fontWeight: 600, marginTop: 4, fontSize: 14 }}>
+              <span className="mono">{p.src}</span> <span className="subtle">→</span> <span className="mono">{p.dst}</span>
+            </div>
+          </div>
+          <button className="icon-btn" onClick={onClose}><Icon name="x"/></button>
+        </div>
+        <div className="slideover-body">
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
+            <div><div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Confidence</div><div className="mono" style={{ fontSize: 18, marginTop: 2 }}>{p.conf.toFixed(4)}</div></div>
+            <div><div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Slice</div><div className="mono" style={{ fontSize: 14, marginTop: 4 }}>{p.slice}</div></div>
+            <div><div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Protocol</div><div className="mono" style={{ fontSize: 14, marginTop: 4 }}>{p.proto}</div></div>
+          </div>
+
+          <div className="panel-sub" style={{ marginTop: 4, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>SHAP · feature attribution</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 8 }}>
+            Red = pushes toward <b>{p.clsLabel}</b>, green = pushes toward benign. Base value E[f(X)] = 0.203.
+          </div>
+          {shap.map((s, i) => {
+            const pctAbs = (s.abs/maxAbs)*48;
+            return <div key={i} className="shap-row">
+              <div className="shap-label">{s.feature}</div>
+              <div className="shap-bar">
+                {s.value > 0 && <div className="shap-bar-pos" style={{ width: pctAbs+'%' }}/>}
+                {s.value < 0 && <div className="shap-bar-neg" style={{ width: pctAbs+'%' }}/>}
+              </div>
+              <div className="shap-val">{s.value > 0 ? '+' : ''}{s.value.toFixed(3)}</div>
+            </div>;
+          })}
+
+          <div className="divider"/>
+          <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Raw scores</div>
+          <div className="mono" style={{ fontSize: 12, background: 'var(--bg-subtle)', padding: 12, borderRadius: 6, border: '1px solid var(--line)', lineHeight: 1.7 }}>
+            <div><span className="muted">benign            </span>{(1-p.conf).toFixed(4)}</div>
+            <div><span className="muted">malicious         </span>{p.conf.toFixed(4)}</div>
+            <div><span className="muted">inference_time_ms </span>{(20 + (p.row%50)).toFixed(0)}</div>
+            <div><span className="muted">model_version     </span>"autoencoder-6g-v1.4"</div>
+          </div>
+
+          <div className="divider"/>
+          <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Recommended action</div>
+          <div className="alert alert-crit" style={{ marginBottom: 8 }}>
+            <Icon name="warn" size={14}/>
+            <div><div className="alert-title">Isolate source address</div>
+              <div className="alert-body">This flow exhibits high rate_log and anomalous SynAck_log, consistent with SYN-flood DDoS.</div>
+            </div>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            <Button variant="danger" size="sm">Isolate host</Button>
+            <Button variant="default" size="sm">Add to watchlist</Button>
+            <Button variant="ghost" size="sm">Mark false positive</Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+Object.assign(window, { DashboardPage, PredictionDetail });
+
+</script>
+<script type="text/babel" data-presets="react">
+// Upload page + history + admin + drift
+function UploadPage({ data, onComplete, onNavigate }) {
+  const [stage, setStage] = useState('idle'); // idle, validating, invalid, ready, uploading, pending, running, completed
+  const [file, setFile] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [errors, setErrors] = useState([]);
+  const [validateMode, setValidateMode] = useState('valid'); // 'valid' or 'invalid'
+  const inputRef = useRef();
+
+  function pick() { inputRef.current?.click(); }
+
+  function handleFile(f) {
+    const name = f?.name || 'cicflow_6g_urllc_2026-04-20.csv';
+    const size = f?.size || 2845312;
+    setFile({ name, size, rows: 14456, cols: 64 });
+    setStage('validating');
+    setTimeout(() => {
+      if (validateMode === 'invalid') {
+        setErrors([
+          'Missing required column: SynAck_log',
+          'Column sTtl contains 127 non-numeric values',
+          '8.2% of rows are fully null (threshold: 10%)',
+        ]);
+        setStage('invalid');
+      } else {
+        setErrors([]);
+        setStage('ready');
+      }
+    }, 900);
+  }
+
+  function startUpload() {
+    setStage('uploading');
+    setProgress(0);
+    const iv = setInterval(() => {
+      setProgress(p => {
+        const np = p + 8 + Math.random()*10;
+        if (np >= 100) { clearInterval(iv); setStage('pending'); setTimeout(() => setStage('running'), 700); return 100; }
+        return np;
+      });
+    }, 140);
+  }
+
+  // auto-advance running → completed
+  useEffect(() => {
+    if (stage === 'running') {
+      const t = setTimeout(() => setStage('completed'), 3800);
+      return () => clearTimeout(t);
+    }
+  }, [stage]);
+
+  function reset() {
+    setStage('idle'); setFile(null); setErrors([]); setProgress(0);
+  }
+
+  const steps = [
+    { key: 'pending', label: 'Queued' },
+    { key: 'running', label: 'Fetching from MinIO' },
+    { key: 'inference', label: 'Running inference' },
+    { key: 'persisting', label: 'Persisting results' },
+    { key: 'completed', label: 'Complete' },
+  ];
+  const stageOrder = ['idle','validating','ready','uploading','pending','running','completed'];
+  const stageIdx = stageOrder.indexOf(stage);
+
+  function stepState(i) {
+    if (stage === 'completed') return 'done';
+    if (stage === 'running' && i < 3) return i < 2 ? 'done' : 'active';
+    if (stage === 'pending' && i === 0) return 'active';
+    if (stage === 'pending' && i < 0) return 'done';
+    return 'idle';
+  }
+
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">New scan</h1>
+        <div className="page-desc">Upload a CSV of 5G/6G network flows. Max 50 MB · up to 100,000 rows.</div>
+      </div>
+      <div className="page-actions">
+        <div className="tweak-chips" style={{ marginRight: 4 }}>
+          <span className="subtle" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', alignSelf: 'center', marginRight: 6 }}>demo validation</span>
+          <button className={cls('tweak-chip', validateMode==='valid' && 'on')} onClick={()=>setValidateMode('valid')}>valid</button>
+          <button className={cls('tweak-chip', validateMode==='invalid' && 'on')} onClick={()=>setValidateMode('invalid')}>invalid</button>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid dash-grid">
+      <div className="span-8">
+        <Panel title="Upload" padding={false}>
+          <div style={{ padding: 16 }}>
+            {(stage === 'idle' || stage === 'validating' || stage === 'invalid' || stage === 'ready') && (
+              <div className={cls('dropzone', dragging && 'active')}
+                onClick={pick}
+                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}>
+                <input ref={inputRef} type="file" accept=".csv" style={{ display: 'none' }}
+                  onChange={e => e.target.files[0] && handleFile(e.target.files[0])}/>
+                <div className="dropzone-icon"><Icon name="upload" size={20}/></div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Drop CSV file here</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>or click to browse · accepts <span className="mono">.csv</span> up to 50MB</div>
+                <div className="row" style={{ justifyContent: 'center', gap: 6, marginTop: 14 }}>
+                  <span className="tag">sTtl</span><span className="tag">dTtl</span><span className="tag">Rate_log</span><span className="tag">SrcBytes_log</span><span className="tag muted">+60 more</span>
+                </div>
+              </div>
+            )}
+
+            {file && stage !== 'idle' && (
+              <div className="panel" style={{ marginTop: 14, border: '1px solid var(--line)' }}>
+                <div className="row" style={{ padding: 12, gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--bg-subtle)', display: 'grid', placeItems: 'center', color: 'var(--fg-muted)', flexShrink: 0 }}>
+                    <Icon name="file" size={18}/>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 500 }}>{file.name}</div>
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      {(file.size/1024/1024).toFixed(2)} MB · {file.rows.toLocaleString()} rows × {file.cols} cols
+                      {stage === 'validating' && <> · <span style={{ color: 'var(--accent)' }}>validating schema…</span></>}
+                      {stage === 'ready' && <> · <span style={{ color: 'var(--ok)' }}>schema valid</span></>}
+                      {stage === 'invalid' && <> · <span style={{ color: 'var(--critical)' }}>{errors.length} error{errors.length!==1?'s':''}</span></>}
+                    </div>
+                  </div>
+                  <button className="icon-btn" onClick={reset}><Icon name="x"/></button>
+                </div>
+              </div>
+            )}
+
+            {stage === 'invalid' && (
+              <div className="alert alert-crit" style={{ marginTop: 10 }}>
+                <Icon name="warn" size={16}/>
+                <div>
+                  <div className="alert-title">Validation failed</div>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
+                    {errors.map((e,i) => <li key={i} style={{ color: 'var(--fg-muted)' }}>{e}</li>)}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {(stage === 'ready' || stage === 'uploading' || stage === 'pending' || stage === 'running' || stage === 'completed') && (
+              <div style={{ marginTop: 12 }}>
+                <div className="row" style={{ marginBottom: 10, justifyContent: 'space-between' }}>
+                  <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>Job pipeline</div>
+                  <span className="mono muted" style={{ fontSize: 11 }}>
+                    {stage === 'completed' ? 'job_a3f1 · 2m 14s' : stage === 'running' ? 'job_a3f1 · running' : 'job_a3f1 · pending'}
+                  </span>
+                </div>
+                <div className="steps">
+                  {steps.map((s, i) => {
+                    let state = 'idle';
+                    if (stage === 'completed') state = 'done';
+                    else if (stage === 'running' && i <= 2) state = i < 2 ? 'done' : 'active';
+                    else if (stage === 'pending' && i === 0) state = 'active';
+                    else if (stage === 'uploading' && i === 0) state = 'active';
+                    return <div key={s.key} className={cls('step', state)}>
+                      <div className="step-dot">
+                        {state === 'done' && <Icon name="check" size={10}/>}
+                      </div>
+                      <span>{s.label}</span>
+                    </div>;
+                  })}
+                </div>
+                {stage === 'uploading' && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="row" style={{ justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                      <span className="muted">Uploading to MinIO…</span>
+                      <span className="mono">{progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="progress-bar"><div className="progress-bar-fill" style={{ width: progress+'%' }}/></div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end', gap: 8 }}>
+              {stage === 'ready' && <>
+                <Button variant="ghost" onClick={reset}>Cancel</Button>
+                <Button variant="primary" icon="play" onClick={startUpload}>Start prediction</Button>
+              </>}
+              {stage === 'invalid' && <Button variant="default" onClick={reset}>Choose another file</Button>}
+              {stage === 'completed' && <>
+                <Button variant="ghost" onClick={reset}>New scan</Button>
+                <Button variant="primary" onClick={() => onNavigate('results')}>View results →</Button>
+              </>}
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="span-4">
+        <Panel title="Schema requirements" subtitle="CSV columns & constraints">
+          <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+            <div className="row"><Icon name="check" size={14} style={{ color: 'var(--ok)' }}/><span className="muted">Extension</span><span className="mono" style={{ marginLeft: 'auto' }}>.csv</span></div>
+            <div className="row"><Icon name="check" size={14} style={{ color: 'var(--ok)' }}/><span className="muted">Max size</span><span className="mono" style={{ marginLeft: 'auto' }}>50 MB</span></div>
+            <div className="row"><Icon name="check" size={14} style={{ color: 'var(--ok)' }}/><span className="muted">Max rows</span><span className="mono" style={{ marginLeft: 'auto' }}>100,000</span></div>
+            <div className="row"><Icon name="check" size={14} style={{ color: 'var(--ok)' }}/><span className="muted">Null tolerance</span><span className="mono" style={{ marginLeft: 'auto' }}>≤ 10%</span></div>
+            <div className="row"><Icon name="check" size={14} style={{ color: 'var(--ok)' }}/><span className="muted">Required cols</span><span className="mono" style={{ marginLeft: 'auto' }}>64 (5G) / 75 (6G)</span></div>
+          </div>
+          <div className="divider"/>
+          <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>First 8 features</div>
+          <div className="row" style={{ flexWrap: 'wrap', gap: 4 }}>
+            {data.FEATURES.slice(0,16).map(f => <span key={f} className="tag">{f}</span>)}
+          </div>
+          <div className="divider"/>
+          <div className="hlink" style={{ fontSize: 11 }}>Download template CSV →</div>
+        </Panel>
+
+        <div style={{ height: 12 }}/>
+
+        <Panel title="Detection model" subtitle="active endpoint">
+          <div className="mono" style={{ fontSize: 12, lineHeight: 1.9 }}>
+            <div className="row"><span className="muted">model</span><span style={{ marginLeft: 'auto' }}>autoencoder-6g-v1.4</span></div>
+            <div className="row"><span className="muted">algorithm</span><span style={{ marginLeft: 'auto' }}>Variational AE</span></div>
+            <div className="row"><span className="muted">features</span><span style={{ marginLeft: 'auto' }}>75</span></div>
+            <div className="row"><span className="muted">trained</span><span style={{ marginLeft: 'auto' }}>2026-03-12</span></div>
+            <div className="row"><span className="muted">endpoint</span><Badge tone="ok" dot>healthy</Badge></div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  </>;
+}
+
+// ─────────── History ───────────
+function HistoryPage({ data, onNavigate }) {
+  const [sortKey, setSortKey] = useState('created');
+  const [sortDir, setSortDir] = useState('desc');
+  const [filter, setFilter] = useState('all');
+
+  const filtered = data.jobs.filter(j => filter === 'all' || j.status === filter);
+  const sorted = [...filtered].sort((a,b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    const d = typeof av === 'string' ? av.localeCompare(bv) : (av - bv);
+    return sortDir === 'asc' ? d : -d;
+  });
+
+  function setSort(k) {
+    if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir('desc'); }
+  }
+
+  function Th({ k, children, align }) {
+    const sorted = sortKey === k;
+    return <th className={cls('sortable', sorted && 'sorted', align === 'right' && 'num')} onClick={()=>setSort(k)}>
+      <span className="row" style={{ gap: 4, justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+        {children}
+        {sorted && <Icon name={sortDir==='desc'?'down':'up'} size={10}/>}
+      </span>
+    </th>;
+  }
+
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Prediction history</h1>
+        <div className="page-desc">{filtered.length} jobs · sort and filter to review past scans</div>
+      </div>
+      <div className="page-actions">
+        <Button variant="default" size="md" icon="download">Export list</Button>
+        <Button variant="primary" size="md" icon="upload" onClick={() => onNavigate('upload')}>New scan</Button>
+      </div>
+    </div>
+
+    <Panel padding={false}>
+      <div className="stat-strip">
+        <div className="stat"><span className="stat-label">Total jobs</span><span className="stat-value">{data.jobs.length}</span></div>
+        <div className="stat"><span className="stat-label">Completed</span><span className="stat-value" style={{ color: 'var(--ok)' }}>{data.jobs.filter(j=>j.status==='completed').length}</span></div>
+        <div className="stat"><span className="stat-label">Running</span><span className="stat-value" style={{ color: 'var(--accent)' }}>{data.jobs.filter(j=>j.status==='running').length}</span></div>
+        <div className="stat"><span className="stat-label">Failed</span><span className="stat-value" style={{ color: 'var(--critical)' }}>{data.jobs.filter(j=>j.status==='failed').length}</span></div>
+        <div className="stat"><span className="stat-label">Rows processed</span><span className="stat-value">{fmtN(data.jobs.reduce((s,j)=>s+j.rows,0))}</span></div>
+        <div className="stat"><span className="stat-label">Avg attack rate</span><span className="stat-value">{fmtPct(data.jobs.reduce((s,j)=>s+j.attackRate,0)/data.jobs.length)}</span></div>
+        <div style={{ marginLeft: 'auto' }} className="row">
+          <span className="subtle" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>filter</span>
+          <div className="tweak-chips">
+            {['all','completed','running','failed'].map(f => (
+              <button key={f} className={cls('tweak-chip', filter===f && 'on')} onClick={()=>setFilter(f)}>{f}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead><tr>
+            <Th k="status">Status</Th>
+            <Th k="id">Job</Th>
+            <Th k="filename">File</Th>
+            <Th k="slice">Slice</Th>
+            <Th k="rows" align="right">Rows</Th>
+            <Th k="attacks" align="right">Attacks</Th>
+            <Th k="attackRate" align="right">Attack rate</Th>
+            <Th k="duration" align="right">Duration</Th>
+            <Th k="created">Created</Th>
+            <th>Flags</th>
+            <th></th>
+          </tr></thead>
+          <tbody>
+            {sorted.map(j => (
+              <tr key={j.id} className="clickable" onClick={() => onNavigate('results')}>
+                <td>
+                  <Badge tone={j.status==='completed'?'ok':j.status==='running'?'accent':'critical'} dot>
+                    {j.status}
+                  </Badge>
+                </td>
+                <td className="mono">{j.id}</td>
+                <td className="truncate" style={{ maxWidth: 240 }}>{j.filename}</td>
+                <td><span className="mono muted">{j.slice}</span></td>
+                <td className="num">{fmtN(j.rows)}</td>
+                <td className="num">{fmtN(j.attacks)}</td>
+                <td className="num">
+                  <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                    <div style={{ width: 40, height: 3, background: 'var(--bg-subtle)', borderRadius: 2 }}>
+                      <div style={{ width: `${j.attackRate*100}%`, height: '100%', background: j.attackRate > 0.3 ? 'var(--critical)' : 'var(--accent)', borderRadius: 2 }}/>
+                    </div>
+                    <span>{fmtPct(j.attackRate)}</span>
+                  </div>
+                </td>
+                <td className="num muted">{fmtDur(j.duration)}</td>
+                <td className="muted">{fmtDate(j.created)}</td>
+                <td>
+                  <div className="row" style={{ gap: 4 }}>
+                    {j.drift && <Badge tone="warn">drift</Badge>}
+                    {j.fairness && <Badge tone="warn">fairness</Badge>}
+                  </div>
+                </td>
+                <td><Icon name="arrow" size={14} className="muted"/></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  </>;
+}
+
+Object.assign(window, { UploadPage, HistoryPage });
+
+</script>
+<script type="text/babel" data-presets="react">
+// Results detail page + Admin + Drift pages
+function ResultsPage({ data, onNavigate }) {
+  const [selected, setSelected] = useState(null);
+  const [classFilter, setClassFilter] = useState('all');
+  const [minConf, setMinConf] = useState(0.5);
+  const job = data.jobs[0];
+
+  const filtered = data.predictions.filter(p => {
+    if (classFilter !== 'all' && p.cls !== classFilter) return false;
+    if (p.conf < minConf) return false;
+    return true;
+  });
+
+  const attackCount = data.predictions.filter(p => p.cls !== 'benign').length;
+  const total = data.predictions.length;
+
+  return <>
+    <div className="page-head">
+      <div>
+        <div className="row" style={{ gap: 8, marginBottom: 4 }}>
+          <span className="hlink mono" style={{ fontSize: 11 }} onClick={() => onNavigate('history')}>← history</span>
+          <Badge tone="ok" dot>completed</Badge>
+          <span className="mono muted" style={{ fontSize: 11 }}>{job.id}</span>
+        </div>
+        <h1 className="page-title">{job.filename}</h1>
+        <div className="page-desc">
+          {fmtN(job.rows)} rows · finished {fmtTime(job.created)} · duration {fmtDur(job.duration)} · model <span className="mono">{job.model}</span>
+        </div>
+      </div>
+      <div className="page-actions">
+        <Button variant="default" size="md" icon="download">Export CSV</Button>
+        <Button variant="default" size="md" icon="download">Export PDF</Button>
+      </div>
+    </div>
+
+    <div className="grid dash-grid" style={{ marginBottom: 12 }}>
+      <div className="span-3"><Kpi label="Rows" value={fmtN(job.rows)} sub="processed"/></div>
+      <div className="span-3"><Kpi label="Attacks detected" value={fmtN(job.attacks)} sub={`${fmtPct(job.attackRate)} of traffic`}/></div>
+      <div className="span-3"><Kpi label="Avg confidence" value="0.914" sub="across all predictions"/></div>
+      <div className="span-3"><Kpi label="Inference time" value="48ms" sub="p95 per 500-row batch"/></div>
+    </div>
+
+    <div className="grid dash-grid">
+      <div className="span-8">
+        <Panel padding={false}>
+          <div className="stat-strip">
+            <div className="row" style={{ gap: 10 }}>
+              <span className="subtle" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>class</span>
+              <div className="tweak-chips">
+                {['all','benign','ddos_volumetric','ddos_syn','port_scan','c2_beacon'].map(c => (
+                  <button key={c} className={cls('tweak-chip', classFilter===c && 'on')} onClick={()=>setClassFilter(c)}>{c.replace(/_/g,' ')}</button>
+                ))}
+              </div>
+            </div>
+            <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
+              <span className="subtle" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>min conf</span>
+              <input type="range" min="0.5" max="1" step="0.01" value={minConf}
+                onChange={e=>setMinConf(parseFloat(e.target.value))}
+                className="slider" style={{ width: 100 }}/>
+              <span className="mono" style={{ fontSize: 11, width: 34 }}>{minConf.toFixed(2)}</span>
+              <span className="subtle" style={{ fontSize: 11 }}>·</span>
+              <span className="mono muted" style={{ fontSize: 11 }}>{filtered.length} of {total}</span>
+            </div>
+          </div>
+
+          <div className="tbl-wrap" style={{ maxHeight: 520, overflow: 'auto' }}>
+            <table className="tbl">
+              <thead><tr>
+                <th>#</th><th>Source → Dest</th><th>Proto</th><th>Slice</th>
+                <th className="num">Bytes</th><th className="num">Pkts</th>
+                <th>Prediction</th><th className="num">Confidence</th><th></th>
+              </tr></thead>
+              <tbody>
+                {filtered.slice(0, 80).map(p => (
+                  <tr key={p.id} className={cls('clickable', selected?.id === p.id && 'selected')} onClick={() => setSelected(p)}>
+                    <td className="mono muted">{String(p.row).padStart(4,'0')}</td>
+                    <td><span className="mono">{p.src}</span><span className="subtle" style={{ margin:'0 6px' }}>→</span><span className="mono">{p.dst}</span></td>
+                    <td><span className="tag">{p.proto}</span></td>
+                    <td><span className="mono muted">{p.slice}</span></td>
+                    <td className="num">{fmtN(p.bytes)}</td>
+                    <td className="num">{p.pkts}</td>
+                    <td>
+                      <Badge tone={p.clsColor === 'critical' ? 'critical' : p.clsColor === 'warn' ? 'warn' : 'benign'} dot>
+                        {p.clsLabel}
+                      </Badge>
+                    </td>
+                    <td className="num">
+                      <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                        <div style={{ width: 36, height: 4, background: 'var(--bg-subtle)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ width: `${p.conf*100}%`, height: '100%', background: p.conf > 0.8 ? 'var(--critical)' : 'var(--accent)' }}/>
+                        </div>
+                        <span>{p.conf.toFixed(4)}</span>
+                      </div>
+                    </td>
+                    <td className="muted"><Icon name="arrow" size={14}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="span-4">
+        {!selected ? (
+          <Panel title="Select a row" subtitle="to view SHAP explanation">
+            <div className="empty">
+              <Icon name="results" size={24} className="muted" style={{ marginBottom: 8 }}/>
+              <div>Click any prediction in the table to inspect feature attribution.</div>
+            </div>
+          </Panel>
+        ) : (
+          <SHAPCard p={selected} shap={data.shap}/>
+        )}
+      </div>
+    </div>
+  </>;
+}
+
+function SHAPCard({ p, shap }) {
+  const maxAbs = Math.max(...shap.map(s => s.abs));
+  return (
+    <Panel title="SHAP · feature attribution" subtitle={`row ${p.row} · ${p.clsLabel}`}
+      actions={<Badge tone="accent">{p.conf.toFixed(4)}</Badge>}>
+      <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 10 }}>
+        Why this row was classified as <b>{p.clsLabel}</b>. Red bars increase attack score; green decrease it.
+      </div>
+      <div className="row" style={{ justifyContent: 'space-between', fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--fg-subtle)', marginBottom: 4 }}>
+        <span>benign</span><span>base = 0.203</span><span>malicious</span>
+      </div>
+      {shap.map((s,i) => {
+        const pctAbs = (s.abs/maxAbs)*48;
+        return <div key={i} className="shap-row">
+          <div className="shap-label">{s.feature}</div>
+          <div className="shap-bar">
+            {s.value > 0 && <div className="shap-bar-pos" style={{ width: pctAbs+'%' }}/>}
+            {s.value < 0 && <div className="shap-bar-neg" style={{ width: pctAbs+'%' }}/>}
+          </div>
+          <div className="shap-val">{s.value > 0 ? '+' : ''}{s.value.toFixed(3)}</div>
+        </div>;
+      })}
+      <div className="divider"/>
+      <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Flow metadata</div>
+      <div className="mono" style={{ fontSize: 11, lineHeight: 1.8 }}>
+        <div className="row"><span className="muted">src</span><span style={{ marginLeft: 'auto' }}>{p.src}</span></div>
+        <div className="row"><span className="muted">dst</span><span style={{ marginLeft: 'auto' }}>{p.dst}</span></div>
+        <div className="row"><span className="muted">proto</span><span style={{ marginLeft: 'auto' }}>{p.proto}</span></div>
+        <div className="row"><span className="muted">slice</span><span style={{ marginLeft: 'auto' }}>{p.slice}</span></div>
+        <div className="row"><span className="muted">bytes</span><span style={{ marginLeft: 'auto' }}>{p.bytes.toLocaleString()}</span></div>
+        <div className="row"><span className="muted">packets</span><span style={{ marginLeft: 'auto' }}>{p.pkts}</span></div>
+      </div>
+      <div className="row" style={{ marginTop: 12, gap: 6, flexWrap: 'wrap' }}>
+        <Button variant="danger" size="sm">Isolate host</Button>
+        <Button variant="default" size="sm">Watchlist</Button>
+        <Button variant="ghost" size="sm">False positive</Button>
+      </div>
+    </Panel>
+  );
+}
+
+// ─────────── Admin: users ───────────
+function UsersPage({ data }) {
+  const [users, setUsers] = useState(data.users);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  function toggleActive(id) {
+    setUsers(us => us.map(u => u.id === id ? { ...u, active: !u.active } : u));
+  }
+  function setRole(id, role) {
+    setUsers(us => us.map(u => u.id === id ? { ...u, role } : u));
+  }
+
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Users & roles</h1>
+        <div className="page-desc">{users.length} members · admins can add, deactivate, and reassign roles</div>
+      </div>
+      <div className="page-actions">
+        <Button variant="primary" size="md" icon="plus" onClick={()=>setModalOpen(true)}>Invite user</Button>
+      </div>
+    </div>
+
+    <Panel padding={false}>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Role</th><th>Status</th>
+            <th>Last active</th><th></th>
+          </tr></thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id}>
+                <td>
+                  <div className="row">
+                    <div className="avatar">{u.name.split(' ').map(n=>n[0]).slice(0,2).join('')}</div>
+                    <span style={{ fontWeight: 500 }}>{u.name}</span>
+                  </div>
+                </td>
+                <td className="mono muted" style={{ fontSize: 11 }}>{u.email}</td>
+                <td>
+                  <select className="form-select" style={{ height: 24, fontSize: 11, padding: '0 6px', width: 120 }}
+                    value={u.role} onChange={e => setRole(u.id, e.target.value)}>
+                    <option value="analyst">Analyst</option>
+                    <option value="admin">Administrator</option>
+                    <option value="ml_engineer">ML Engineer</option>
+                  </select>
+                </td>
+                <td>
+                  <div className="row" style={{ gap: 8 }}>
+                    <div className={cls('toggle', u.active && 'on')} onClick={()=>toggleActive(u.id)}>
+                      <div className="toggle-thumb"/>
+                    </div>
+                    <span className="muted" style={{ fontSize: 11 }}>{u.active?'active':'disabled'}</span>
+                  </div>
+                </td>
+                <td className="muted">{fmtTime(u.last)}</td>
+                <td><button className="icon-btn"><Icon name="more"/></button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+
+    {modalOpen && (
+      <div className="modal-backdrop" onClick={()=>setModalOpen(false)}>
+        <div className="modal" onClick={e=>e.stopPropagation()}>
+          <div className="modal-head">
+            <div className="modal-title">Invite user</div>
+            <button className="icon-btn" onClick={()=>setModalOpen(false)}><Icon name="x"/></button>
+          </div>
+          <div className="modal-body">
+            <div className="form-field">
+              <label className="form-label">Full name</label>
+              <input className="form-input" placeholder="Jamie Chen"/>
+            </div>
+            <div className="form-field">
+              <label className="form-label">Email</label>
+              <input className="form-input" placeholder="jamie@sentra.io"/>
+            </div>
+            <div className="form-field">
+              <label className="form-label">Role</label>
+              <select className="form-select">
+                <option value="analyst">Security Analyst</option>
+                <option value="ml_engineer">ML Engineer</option>
+                <option value="admin">Administrator</option>
+              </select>
+              <div className="form-hint">Role controls sidebar menu and allowed operations.</div>
+            </div>
+          </div>
+          <div className="modal-foot">
+            <Button variant="ghost" onClick={()=>setModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={()=>setModalOpen(false)}>Send invite</Button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>;
+}
+
+// ─────────── Admin: settings ───────────
+function SettingsPage({ threshold, setThreshold, sliceThresholds, setSliceThresholds }) {
+  const [maxRows, setMaxRows] = useState(100000);
+  const [saved, setSaved] = useState(false);
+
+  function save() { setSaved(true); setTimeout(()=>setSaved(false), 2000); }
+
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Thresholds & configuration</h1>
+        <div className="page-desc">Changes are logged to audit_log and take effect on next inference batch.</div>
+      </div>
+      <div className="page-actions">
+        {saved && <Badge tone="ok" dot>changes saved</Badge>}
+        <Button variant="primary" size="md" onClick={save}>Save changes</Button>
+      </div>
+    </div>
+
+    <div className="grid dash-grid">
+      <div className="span-8">
+        <Panel title="Detection thresholds" subtitle="confidence cutoff for marking a flow as malicious">
+          <div style={{ marginBottom: 16 }}>
+            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}>Global default</div>
+                <div className="muted" style={{ fontSize: 11 }}>applied to all slices unless overridden</div>
+              </div>
+              <div className="mono" style={{ fontSize: 18 }}>{threshold.toFixed(2)}</div>
+            </div>
+            <input type="range" min="0.3" max="0.95" step="0.01" value={threshold}
+              onChange={e=>setThreshold(parseFloat(e.target.value))} className="slider"/>
+            <div className="row" style={{ justifyContent: 'space-between', marginTop: 4, fontSize: 10, color: 'var(--fg-subtle)', fontFamily: 'var(--mono)' }}>
+              <span>0.30 · sensitive</span><span>0.50</span><span>0.70</span><span>0.95 · strict</span>
+            </div>
+          </div>
+
+          <div className="divider"/>
+
+          <div className="panel-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Per-slice overrides</div>
+          {['URLLC','eMBB','mMTC'].map(s => (
+            <div key={s} style={{ marginBottom: 14 }}>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+                <div className="row">
+                  <span className="mono" style={{ fontWeight: 500 }}>{s}</span>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {s==='URLLC' && 'ultra-reliable low-latency'}
+                    {s==='eMBB' && 'enhanced mobile broadband'}
+                    {s==='mMTC' && 'massive machine-type comms'}
+                  </span>
+                </div>
+                <div className="mono" style={{ fontSize: 13 }}>{sliceThresholds[s].toFixed(2)}</div>
+              </div>
+              <input type="range" min="0.3" max="0.95" step="0.01"
+                value={sliceThresholds[s]}
+                onChange={e => setSliceThresholds({ ...sliceThresholds, [s]: parseFloat(e.target.value) })}
+                className="slider"/>
+            </div>
+          ))}
+        </Panel>
+      </div>
+
+      <div className="span-4">
+        <Panel title="Upload limits">
+          <div className="form-field">
+            <label className="form-label">Max rows per CSV</label>
+            <input className="form-input" type="number" value={maxRows} onChange={e=>setMaxRows(+e.target.value)}/>
+            <div className="form-hint">Hard cap per upload; spreads to validator and batch splitter.</div>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Max file size (MB)</label>
+            <input className="form-input" type="number" defaultValue="50"/>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Null tolerance</label>
+            <input className="form-input" type="number" defaultValue="10"/>
+            <div className="form-hint">% of rows permitted to be fully null.</div>
+          </div>
+        </Panel>
+
+        <div style={{ height: 12 }}/>
+
+        <Panel title="Notifications">
+          <div className="row" style={{ justifyContent: 'space-between', padding: '6px 0' }}>
+            <div><div style={{ fontSize: 12, fontWeight: 500 }}>Drift alerts</div><div className="muted" style={{ fontSize: 11 }}>email on > 3 drifted features</div></div>
+            <div className="toggle on"><div className="toggle-thumb"/></div>
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', padding: '6px 0' }}>
+            <div><div style={{ fontSize: 12, fontWeight: 500 }}>Fairness alerts</div><div className="muted" style={{ fontSize: 11 }}>email on per-slice recall &lt; 0.8</div></div>
+            <div className="toggle on"><div className="toggle-thumb"/></div>
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', padding: '6px 0' }}>
+            <div><div style={{ fontSize: 12, fontWeight: 500 }}>Job completion</div><div className="muted" style={{ fontSize: 11 }}>notify job author</div></div>
+            <div className="toggle"><div className="toggle-thumb"/></div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  </>;
+}
+
+// ─────────── Drift & Fairness page ───────────
+function DriftPage({ data }) {
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Drift & fairness</h1>
+        <div className="page-desc">Distribution shift monitoring and per-slice performance audits</div>
+      </div>
+      <div className="page-actions">
+        <Badge tone="warn" dot>2 active alerts</Badge>
+        <Button variant="default" size="md" icon="download">Export audit log</Button>
+      </div>
+    </div>
+
+    <div className="alert alert-warn" style={{ marginBottom: 12 }}>
+      <Icon name="warn" size={16}/>
+      <div>
+        <div className="alert-title">Concept drift detected · job_3319</div>
+        <div className="alert-body">Kolmogorov–Smirnov test flagged 3 of 24 monitored features (p &lt; 0.05). Autoencoder-6g-v1.4 may be stale.</div>
+      </div>
+      <div className="alert-actions">
+        <Button variant="ghost" size="sm">Trigger retrain</Button>
+        <Button variant="ghost" size="sm">Acknowledge</Button>
+      </div>
+    </div>
+
+    <div className="grid dash-grid">
+      <div className="span-7">
+        <Panel title="Feature drift (KS two-sample)" subtitle="incoming batch vs. reference training distribution">
+          <table className="tbl">
+            <thead><tr>
+              <th>Feature</th>
+              <th className="num">KS statistic</th>
+              <th className="num">p-value</th>
+              <th>Distribution</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>
+              {data.drift.features.map(f => (
+                <tr key={f.name}>
+                  <td><span className="mono">{f.name}</span></td>
+                  <td className="num">{f.ks.toFixed(3)}</td>
+                  <td className="num"><span style={{ color: f.drifted?'var(--critical)':'var(--fg-muted)' }}>{f.p.toFixed(3)}</span></td>
+                  <td>
+                    <div style={{ width: 120, height: 18, position: 'relative' }}>
+                      <Sparkline data={Array.from({length: 20}, (_,i) => Math.sin(i/2 + (f.drifted?1:0)) + Math.random()*0.3)} stroke={f.drifted?'var(--critical)':'var(--fg-subtle)'} fill={true} height={18}/>
+                    </div>
+                  </td>
+                  <td>
+                    <Badge tone={f.drifted?'critical':'ok'} dot>
+                      {f.drifted?'drifted':'stable'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      </div>
+
+      <div className="span-5">
+        <Panel title="Per-slice fairness" subtitle="recall & precision by 6G network slice">
+          {data.fairness.map(f => {
+            const ok = f.recall >= 0.8;
+            return (
+              <div key={f.slice} style={{ marginBottom: 14 }}>
+                <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div className="row">
+                    <span className="mono" style={{ fontWeight: 500 }}>{f.slice}</span>
+                    <Badge tone={ok?'ok':'critical'} dot>{ok?'within SLA':'below SLA'}</Badge>
+                  </div>
+                  <span className="muted mono" style={{ fontSize: 10 }}>support {f.support.toLocaleString()}</span>
+                </div>
+                <HBar label="recall" data={f.recall} max={1} color={ok?'var(--ok)':'var(--critical)'} value={f.recall.toFixed(3)}/>
+                <HBar label="precision" data={f.precision} max={1} color="var(--accent)" value={f.precision.toFixed(3)}/>
+              </div>
+            );
+          })}
+          <div className="divider"/>
+          <div className="alert alert-warn">
+            <Icon name="warn" size={14}/>
+            <div>
+              <div className="alert-title">mMTC recall below SLA</div>
+              <div className="alert-body">0.72 vs. target 0.80. 9,842 samples. Consider rebalancing training set or slice-specific model head.</div>
+            </div>
+          </div>
+        </Panel>
+
+        <div style={{ height: 12 }}/>
+
+        <Panel title="Audit trail" subtitle="last 5 privileged actions">
+          <div style={{ fontSize: 11, lineHeight: 1.8, fontFamily: 'var(--mono)' }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">14:32:18</span><span>admin@sentra.io · threshold.update</span></div>
+            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">13:08:42</span><span>leila.ba · job.create</span></div>
+            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">12:51:04</span><span>admin@sentra.io · user.activate</span></div>
+            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">12:01:19</span><span>y.tanaka · model.inspect</span></div>
+            <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">10:44:07</span><span>system · drift.alert</span></div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  </>;
+}
+
+function ModelPage() {
+  return <>
+    <div className="page-head">
+      <div>
+        <h1 className="page-title">Model registry</h1>
+        <div className="page-desc">Deployed models and versions</div>
+      </div>
+    </div>
+    <Panel padding={false}>
+      <table className="tbl">
+        <thead><tr>
+          <th>Model</th><th>Version</th><th>Algorithm</th><th className="num">Features</th><th>Deployed</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span className="mono">autoencoder-6g</span></td>
+            <td>v1.4</td><td>Variational AE</td>
+            <td className="num">75</td>
+            <td className="muted">2026-03-12</td>
+            <td><Badge tone="ok" dot>active</Badge></td>
+          </tr>
+          <tr>
+            <td><span className="mono">xgboost-5g</span></td>
+            <td>v2.1</td><td>XGBoost</td>
+            <td className="num">64</td>
+            <td className="muted">2026-02-28</td>
+            <td><Badge tone="ok" dot>active</Badge></td>
+          </tr>
+          <tr>
+            <td><span className="mono">autoencoder-6g</span></td>
+            <td>v1.3</td><td>Variational AE</td>
+            <td className="num">75</td>
+            <td className="muted">2026-01-15</td>
+            <td><Badge tone="default" dot>archived</Badge></td>
+          </tr>
+        </tbody>
+      </table>
+    </Panel>
+  </>;
+}
+
+Object.assign(window, { ResultsPage, UsersPage, SettingsPage, DriftPage, ModelPage });
+
+</script>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "role": "admin"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [theme, setTheme] = useState(TWEAK_DEFAULTS.theme);
+  const [role, setRole] = useState(TWEAK_DEFAULTS.role);
+  const [authed, setAuthed] = useState(false);
+  const [route, setRoute] = useState('dashboard');
+  const [threshold, setThreshold] = useState(0.70);
+  const [sliceThresholds, setSliceThresholds] = useState({ URLLC: 0.60, eMBB: 0.70, mMTC: 0.65 });
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+
+  useEffect(() => {
+    const keys = NAV_BY_ROLE[role].filter(i => !i.section).map(i => i.key);
+    if (!keys.includes(route)) setRoute(keys[0]);
+  }, [role]);
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch(e){}
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  function persist(edits) {
+    try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*'); } catch (e) {}
+  }
+
+  const user = {
+    analyst: { name: 'Leïla Ben Amor', email: 'leila.ba@sentra.io' },
+    admin: { name: 'Admin User', email: 'admin@sentra.io' },
+    ml_engineer: { name: 'Yuki Tanaka', email: 'y.tanaka@sentra.io' },
+  }[role];
+
+  if (!authed) {
+    return <LoginScreen onLogin={()=>setAuthed(true)} role={role} setRole={(r)=>{setRole(r); persist({role:r});}} theme={theme}/>;
+  }
+
+  const crumbMap = {
+    dashboard: ['Workspace','Dashboard'],
+    upload: ['Workspace','New scan'],
+    history: ['Workspace','History'],
+    results: ['Workspace','Results','job_83eb'],
+    users: ['Administration','Users'],
+    settings: ['Administration','Thresholds'],
+    drift: ['Administration','Drift & fairness'],
+    model: ['Models','Registry'],
+  };
+
+  return (
+    <div className="app" data-screen-label={route}>
+      <Sidebar route={route} setRoute={setRoute} role={role} user={user} onSignOut={()=>setAuthed(false)}/>
+      <div className="main">
+        <Topbar crumbs={crumbMap[route] || [route]}/>
+        <div className="page">
+          {route === 'dashboard' && <DashboardPage data={SENTRA_DATA} threshold={threshold} onNavigate={setRoute}/>}
+          {route === 'upload' && <UploadPage data={SENTRA_DATA} onNavigate={setRoute}/>}
+          {route === 'history' && <HistoryPage data={SENTRA_DATA} onNavigate={setRoute}/>}
+          {route === 'results' && <ResultsPage data={SENTRA_DATA} onNavigate={setRoute}/>}
+          {route === 'users' && <UsersPage data={SENTRA_DATA}/>}
+          {route === 'settings' && <SettingsPage threshold={threshold} setThreshold={setThreshold}
+            sliceThresholds={sliceThresholds} setSliceThresholds={setSliceThresholds}/>}
+          {route === 'drift' && <DriftPage data={SENTRA_DATA}/>}
+          {route === 'model' && <ModelPage/>}
+        </div>
+      </div>
+
+      {tweaksOpen && (
+        <div className="tweaks-panel">
+          <div className="tweaks-title">
+            <span>Tweaks</span>
+            <button className="icon-btn" style={{ width: 20, height: 20 }} onClick={()=>setTweaksOpen(false)}><Icon name="x" size={12}/></button>
+          </div>
+          <div className="tweak-row">
+            <span className="muted">Theme</span>
+            <div className="tweak-chips">
+              {['light','dark'].map(t => (
+                <button key={t} className={cls('tweak-chip', theme===t && 'on')}
+                  onClick={()=>{setTheme(t); persist({theme:t});}}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div className="tweak-row">
+            <span className="muted">Role</span>
+            <div className="tweak-chips">
+              {[['analyst','analyst'],['admin','admin'],['ml_engineer','ML eng']].map(([v,l]) => (
+                <button key={v} className={cls('tweak-chip', role===v && 'on')}
+                  onClick={()=>{setRole(v); persist({role:v});}}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div className="divider"/>
+          <div className="subtle" style={{ fontSize: 10, fontFamily: 'var(--mono)' }}>
+            role switches sidebar menu · threshold slider on Settings alters KPIs
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
