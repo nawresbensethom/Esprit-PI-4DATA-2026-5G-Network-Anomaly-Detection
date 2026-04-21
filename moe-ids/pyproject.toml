@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "moe-ids"
+version = "0.1.0"
+description = "Production MLOps pipeline for the Unified MoE IDS (5G/6G network intrusion detection)"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "xgboost>=2.0",
+    "tensorflow>=2.13",
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+    "pydantic-settings>=2.0",
+    "structlog>=23.0",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+mlflow = [
+    "mlflow>=2.8",
+    "psycopg2-binary>=2.9",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1",
+    "mypy>=1.5",
+    "httpx>=0.25",
+]
+api = [
+    "fastapi>=0.104",
+    "uvicorn[standard]>=0.24",
+    "python-multipart>=0.0.6",
+    "prometheus-client>=0.19",
+    "psycopg2-binary>=2.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["moe_ids"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

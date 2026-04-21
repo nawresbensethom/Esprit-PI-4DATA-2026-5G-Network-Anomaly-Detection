@@ -1,4 +1,4 @@
-# Environment — only ignore the real secrets file, not the template
+# Environment 
 .env
 
 # Python

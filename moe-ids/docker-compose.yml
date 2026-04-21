@@ -1,0 +1,148 @@
+version: "3.9"
+
+services:
+
+  # ── MLflow tracking server ────────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.21.3
+    container_name: moe_mlflow
+    depends_on:
+      mlflow_db:
+        condition: service_healthy
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@mlflow_db:5432/mlflow
+      MLFLOW_ARTIFACT_ROOT: /mlruns_artifacts
+      MLFLOW_HOST: "0.0.0.0"
+      MLFLOW_PORT: "5000"
+    volumes:
+      - mlruns_artifacts:/mlruns_artifacts
+    ports:
+      - "5000:5000"
+    command: >
+      sh -c "pip install psycopg2-binary -q &&
+             mlflow server
+               --backend-store-uri postgresql://mlflow:mlflow@mlflow_db:5432/mlflow
+               --artifacts-destination /mlruns_artifacts
+               --host 0.0.0.0
+               --port 5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── PostgreSQL (MLflow tracking store) ───────────────────────────────
+  mlflow_db:
+    image: postgres:15-alpine
+    container_name: moe_mlflow_db
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── PostgreSQL (prediction monitoring store) ──────────────────────────
+  monitoring_db:
+    image: postgres:15-alpine
+    container_name: moe_monitoring_db
+    environment:
+      POSTGRES_USER: moe
+      POSTGRES_PASSWORD: moe
+      POSTGRES_DB: moe_monitoring
+    volumes:
+      - monitoring_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moe -d moe_monitoring"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Batch inference API ───────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: moe_api
+    depends_on:
+      monitoring_db:
+        condition: service_healthy
+    environment:
+      ARTEFACTS_DIR: /app/artefacts/production
+      WEBAPP_ORIGIN: ${WEBAPP_ORIGIN:-http://localhost:3000}
+      API_KEY: ${API_KEY:-changeme}
+      LOG_DIR: /app/logs/predictions
+      MONITORING_DB_URL: postgresql://moe:moe@monitoring_db:5432/moe_monitoring
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      DATA_5G_PATH: /app/data/Global_CLEANED.csv
+      DATA_6G_PATH: /app/data/AIoT_6G_CLEANED.csv
+    volumes:
+      - ./artefacts:/app/artefacts
+      - ../MoE:/app/data:ro
+      - api_logs:/app/logs
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Prometheus ────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: moe_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  # ── Grafana ───────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: moe_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  mlruns_artifacts:
+  mlflow_db_data:
+  monitoring_db_data:
+  api_logs:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,85 @@
+{
+  "title": "MoE IDS — Inference Monitoring",
+  "uid": "moe-ids-v1",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/min)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "rate(moe_ids_requests_total[1m]) * 60",
+          "legendFormat": "{{schema}} / {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "P95 Latency (s)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(moe_ids_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 {{schema}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Attack Rate — Last Batch",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 1,
+          "thresholds": {
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "yellow", "value": 0.1},
+              {"color": "red", "value": 0.3}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "moe_ids_attack_rate_last_batch",
+          "legendFormat": "{{schema}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Rows Processed (total)",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(moe_ids_rows_processed_total)",
+          "legendFormat": "Total rows"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Attack vs Benign Predictions",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "rate(moe_ids_attack_predictions_total[5m])",
+          "legendFormat": "attack {{schema}}"
+        },
+        {
+          "expr": "rate(moe_ids_rows_processed_total[5m]) - rate(moe_ids_attack_predictions_total[5m])",
+          "legendFormat": "benign {{schema}}"
+        }
+      ]
+    }
+  ]
+}
