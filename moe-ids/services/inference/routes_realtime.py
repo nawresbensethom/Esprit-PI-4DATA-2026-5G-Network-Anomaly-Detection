@@ -1,6 +1,5 @@
 """
-POST /predict/realtime — accepts a JSON payload of one or more flow records.
-Phase 5 placeholder: currently delegates to the same batch predictor path.
+POST /predict/realtime — placeholder for the Phase-5 Redis-Streams consumer.
 """
 from __future__ import annotations
 

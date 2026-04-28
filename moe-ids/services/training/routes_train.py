@@ -1,21 +1,30 @@
 """
-POST /admin/train — triggers a training run and logs to MLflow.
+POST /admin/train        — triggers a training run (subprocess + MLflow)
+GET  /admin/train/status — polls the running run
+
+On success, the training service calls the inference service's /admin/reload
+over HTTP so the fresh artefacts go live without a restart.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel
 
-from moe_ids.config import settings
-from services.api.dependencies import AuthDep, reload_predictor
+from services.common.auth import AuthDep
+from services.common.metrics import TRAINING_RUNS
 
 router = APIRouter(tags=["admin"])
 
 ROOT = Path(__file__).parent.parent.parent
+
+INFERENCE_BASE_URL = os.environ.get("INFERENCE_BASE_URL", "http://moe-inference-svc:8000")
+INTERNAL_API_KEY = os.environ.get("API_KEY", "changeme")
 
 
 class TrainRequest(BaseModel):
@@ -29,6 +38,7 @@ class TrainRequest(BaseModel):
     mlflow_tracking_uri: str = "http://mlflow:5000"
     experiment: str = "unified_moe"
     no_mlflow: bool = False
+    reload_inference: bool = True
 
 
 class TrainResponse(BaseModel):
@@ -37,6 +47,17 @@ class TrainResponse(BaseModel):
 
 
 _training_status: dict = {"running": False, "last_result": None}
+
+
+def _reload_inference_service() -> dict:
+    url = f"{INFERENCE_BASE_URL}/admin/reload"
+    headers = {"X-Api-Key": INTERNAL_API_KEY}
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(url, headers=headers)
+            return {"status_code": resp.status_code, "ok": resp.is_success}
+    except Exception as exc:
+        return {"status_code": None, "ok": False, "error": str(exc)}
 
 
 def _run_training(req: TrainRequest) -> None:
@@ -59,7 +80,6 @@ def _run_training(req: TrainRequest) -> None:
         if req.no_mlflow:
             cmd.append("--no-mlflow")
 
-        import os
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -68,13 +88,17 @@ def _run_training(req: TrainRequest) -> None:
             env={**os.environ, "PYTHONUTF8": "1"},
         )
         if result.returncode == 0:
-            _training_status["last_result"] = {"success": True, "output": result.stdout[-3000:]}
-            try:
-                reload_predictor()
-            except Exception:
-                pass
+            last: dict = {"success": True, "output": result.stdout[-3000:]}
+            if req.reload_inference:
+                last["reload_inference"] = _reload_inference_service()
+            _training_status["last_result"] = last
+            TRAINING_RUNS.labels(status="success").inc()
         else:
-            _training_status["last_result"] = {"success": False, "error": result.stderr[-3000:]}
+            _training_status["last_result"] = {
+                "success": False,
+                "error": result.stderr[-3000:],
+            }
+            TRAINING_RUNS.labels(status="failure").inc()
     finally:
         _training_status["running"] = False
 
@@ -85,18 +109,20 @@ def trigger_training(
     background_tasks: BackgroundTasks,
     _auth: AuthDep,
 ) -> TrainResponse:
-    """Trigger a training run in the background. Logs to MLflow if no_mlflow=false."""
     if _training_status["running"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A training run is already in progress.",
         )
-    # Guard against Swagger's "string" placeholder being submitted unchanged
-    for field_name, value in [("data_5g", req.data_5g), ("data_6g", req.data_6g), ("artefacts_dir", req.artefacts_dir)]:
+    for field_name, value in [
+        ("data_5g", req.data_5g),
+        ("data_6g", req.data_6g),
+        ("artefacts_dir", req.artefacts_dir),
+    ]:
         if value.strip() in ("", "string"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid {field_name!r}: {value!r}. Provide a real path (defaults are /app/data/*.csv).",
+                detail=f"Invalid {field_name!r}: {value!r}. Provide a real path.",
             )
     if not Path(req.data_5g).is_file():
         raise HTTPException(
@@ -117,7 +143,6 @@ def trigger_training(
 
 @router.get("/admin/train/status")
 def training_status() -> dict:
-    """Check whether training is running and the result of the last run."""
     return {
         "running": _training_status["running"],
         "last_result": _training_status["last_result"],

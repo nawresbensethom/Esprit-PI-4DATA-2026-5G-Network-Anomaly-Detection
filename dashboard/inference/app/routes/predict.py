@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 
 router = APIRouter(prefix="/predict", tags=["predict"])
 
-MLOPS_BASE_URL = os.environ.get("MLOPS_BASE_URL", "http://host.docker.internal:8000")
+MLOPS_BASE_URL = os.environ.get("MLOPS_BASE_URL", "http://moe-inference-svc:8000")
 MLOPS_API_KEY = os.environ.get("MLOPS_API_KEY", "changeme")
 TIMEOUT = float(os.environ.get("MLOPS_TIMEOUT", "60"))
 
@@ -43,3 +43,17 @@ async def upstream_health():
             return {"upstream": MLOPS_BASE_URL, "status": resp.status_code, "body": resp.json()}
         except httpx.RequestError as exc:
             raise HTTPException(status_code=502, detail=f"moe-ids unreachable: {exc}")
+
+
+@router.get("/metrics")
+async def upstream_metrics():
+    """Returns the latest model metrics from MLflow via the moe-inference-svc."""
+    headers = {"X-Api-Key": MLOPS_API_KEY}
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        try:
+            resp = await client.get(f"{MLOPS_BASE_URL}/model/metrics", headers=headers)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"moe-ids unreachable: {exc}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()

@@ -1,6 +1,10 @@
 """
-Prometheus metrics definitions for the MoE IDS API.
-All metric objects are module-level singletons — safe to import anywhere.
+Prometheus metrics shared across MoE IDS microservices.
+
+All metric objects are module-level singletons, so each service that imports
+them exports its own `/metrics` endpoint with the same schema. Prometheus
+scrapes each service independently — labels identify which service the
+sample came from.
 """
 from __future__ import annotations
 
@@ -40,6 +44,23 @@ ATTACK_RATE_GAUGE = Gauge(
 MODEL_RELOAD_COUNT = Counter(
     "moe_ids_model_reloads_total",
     "Number of hot model reloads via /admin/reload",
+)
+
+TRAINING_RUNS = Counter(
+    "moe_ids_training_runs_total",
+    "Number of training runs triggered",
+    ["status"],
+)
+
+DRIFT_CHECKS = Counter(
+    "moe_ids_drift_checks_total",
+    "Number of drift checks executed",
+    ["result"],
+)
+
+LAST_DRIFT_PSI = Gauge(
+    "moe_ids_last_drift_psi",
+    "PSI of attack rate from the most recent drift check",
 )
 
 

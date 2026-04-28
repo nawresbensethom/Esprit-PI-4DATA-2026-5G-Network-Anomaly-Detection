@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Production overlay: pulls pre-built images from DockerHub instead of building
+# locally. Used by the CD workflow and for any deploy that should not rebuild.
+#
+# Usage:
+#   DOCKERHUB_USER=youruser IMAGE_TAG=latest \
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  api-gateway:
+    image: ${DOCKERHUB_USER}/dashboard-gateway:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  frontend-svc:
+    image: ${DOCKERHUB_USER}/dashboard-frontend:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  auth-svc:
+    image: ${DOCKERHUB_USER}/dashboard-auth:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  upload-svc:
+    image: ${DOCKERHUB_USER}/dashboard-upload:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  celery-worker:
+    # The worker image is built from the upload context with a separate
+    # Dockerfile.worker — for now reuse the upload image; if the worker grows
+    # its own deliverable, add a dashboard-celery-worker matrix entry to cd.yml.
+    image: ${DOCKERHUB_USER}/dashboard-upload:${IMAGE_TAG:-latest}
+    build: !reset null
+    command: ["celery", "-A", "app.tasks", "worker", "--loglevel=info"]
+
+  inference-svc:
+    image: ${DOCKERHUB_USER}/dashboard-inference:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  report-svc:
+    image: ${DOCKERHUB_USER}/dashboard-report:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  moe-inference-svc:
+    image: ${DOCKERHUB_USER}/moe-inference:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  moe-training-svc:
+    image: ${DOCKERHUB_USER}/moe-training:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  moe-monitoring-svc:
+    image: ${DOCKERHUB_USER}/moe-monitoring:${IMAGE_TAG:-latest}
+    build: !reset null

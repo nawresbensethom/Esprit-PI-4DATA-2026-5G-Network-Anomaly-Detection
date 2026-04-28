@@ -3,7 +3,34 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: moe_ids_api
+  # ── MoE IDS microservices ────────────────────────────────────────────────
+  - job_name: moe_inference
     static_configs:
-      - targets: ["api:8000"]
+      - targets: ["moe-inference-svc:8000"]
     metrics_path: /metrics
+
+  - job_name: moe_training
+    static_configs:
+      - targets: ["moe-training-svc:8010"]
+    metrics_path: /metrics
+
+  - job_name: moe_monitoring
+    static_configs:
+      - targets: ["moe-monitoring-svc:8011"]
+    metrics_path: /metrics
+
+  # ── Machine-level metrics ────────────────────────────────────────────────
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # ── Per-container metrics ────────────────────────────────────────────────
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # ── Model-run metrics pushed by scripts/train.py ─────────────────────────
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]

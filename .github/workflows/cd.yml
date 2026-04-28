@@ -1,0 +1,334 @@
+name: CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (default: short git SHA)"
+        required: false
+      experiment_name:
+        description: "MLflow experiment name for the deploy training run"
+        required: false
+        default: "unified_moe_cd"
+      run_training:
+        description: "Run a training job and log to MLflow as part of the deploy"
+        required: false
+        default: "true"
+      boot_stack:
+        description: "Boot the full stack on the runner (smoke-only — runner is ephemeral)"
+        required: false
+        default: "true"
+
+concurrency:
+  group: cd
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: ${{ github.event.inputs.tag || github.sha }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  # Build and push every back/front image to DockerHub in parallel
+  # ──────────────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build & push (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: moe-inference
+            context: ./moe-ids
+            dockerfile: services/inference/Dockerfile
+          - image: moe-training
+            context: ./moe-ids
+            dockerfile: services/training/Dockerfile
+          - image: moe-monitoring
+            context: ./moe-ids
+            dockerfile: services/monitoring/Dockerfile
+          - image: dashboard-gateway
+            context: ./dashboard/gateway
+            dockerfile: Dockerfile
+          - image: dashboard-auth
+            context: ./dashboard/auth
+            dockerfile: Dockerfile
+          - image: dashboard-inference
+            context: ./dashboard/inference
+            dockerfile: Dockerfile
+          - image: dashboard-upload
+            context: ./dashboard/upload
+            dockerfile: Dockerfile
+          - image: dashboard-report
+            context: ./dashboard/report
+            dockerfile: Dockerfile
+          - image: dashboard-frontend
+            context: ./dashboard/frontend
+            dockerfile: Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push ${{ matrix.image }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USER }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKERHUB_USER }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Train + log to MLflow (so the registry has a fresh run aligned with
+  # the deployed image tag). Runs in parallel with build-and-push.
+  # ──────────────────────────────────────────────────────────────────────
+  train-and-log:
+    name: Train + log to MLflow
+    if: github.event.inputs.run_training != 'false'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: moe-ids
+    services:
+      mlflow_db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mlflow
+          POSTGRES_PASSWORD: mlflow
+          POSTGRES_DB: mlflow
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: moe-ids/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,api,mlflow]"
+          pip install mlflow psycopg2-binary
+
+      - name: Verify cleaned datasets
+        run: |
+          test -f ../MoE/Global_CLEANED.csv || (echo "::error::Global_CLEANED.csv missing" && exit 1)
+          test -f ../MoE/AIoT_6G_CLEANED.csv || (echo "::error::AIoT_6G_CLEANED.csv missing" && exit 1)
+
+      - name: Start MLflow server
+        run: |
+          nohup mlflow server \
+            --backend-store-uri postgresql://mlflow:mlflow@localhost:5433/mlflow \
+            --default-artifact-root /tmp/mlruns \
+            --host 0.0.0.0 --port 5000 > /tmp/mlflow.log 2>&1 &
+          for i in {1..20}; do
+            if curl -fsS http://localhost:5000/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:5000/health
+
+      - name: Train and log to MLflow
+        env:
+          MLFLOW_TRACKING_URI: http://localhost:5000
+          PYTHONUTF8: "1"
+        run: |
+          python scripts/train.py \
+            --data-5g ../MoE/Global_CLEANED.csv \
+            --data-6g ../MoE/AIoT_6G_CLEANED.csv \
+            --artefacts-dir artefacts/cd \
+            --seed 42 \
+            --ae-epochs 5 \
+            --gate-epochs 5 \
+            --xgb-n-estimators 100 \
+            --mlflow-tracking-uri http://localhost:5000 \
+            --experiment "${{ github.event.inputs.experiment_name }}" \
+            --no-pushgateway
+
+      - name: Upload trained artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artefacts-cd-${{ env.IMAGE_TAG }}
+          path: moe-ids/artefacts/cd/
+          retention-days: 30
+
+      - name: Auto-promote to Production on F1 threshold
+        env:
+          MLFLOW_TRACKING_URI: http://localhost:5000
+        run: |
+          python scripts/promote.py \
+            --latest \
+            --to production \
+            --experiment "${{ github.event.inputs.experiment_name }}" \
+            --mlflow-tracking-uri http://localhost:5000 \
+          || echo "::warning::Auto-promotion skipped (thresholds not met or MLflow registry unavailable)"
+
+      - name: Dump MLflow log on failure
+        if: failure()
+        run: tail -200 /tmp/mlflow.log || true
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Boot the full stack on the runner using the just-pushed images
+  # (smoke test only — runner is ephemeral and tears down after the job).
+  # ──────────────────────────────────────────────────────────────────────
+  deploy-and-smoke-test:
+    name: Boot stack from DockerHub + smoke test
+    if: github.event.inputs.boot_stack != 'false'
+    needs: [build-and-push, train-and-log]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull pushed images
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+        run: |
+          for img in moe-inference moe-training moe-monitoring \
+                     dashboard-gateway dashboard-auth dashboard-inference \
+                     dashboard-upload dashboard-report dashboard-frontend; do
+            docker pull "$DOCKERHUB_USER/$img:${{ env.IMAGE_TAG }}"
+          done
+
+      - name: Boot stack via docker-compose.prod.yml
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          INTERNAL_API_KEY: ci-key
+          JWT_SECRET: ci-secret
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+          docker compose ps
+
+      - name: Wait for gateway + frontend to be reachable
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8090/health > /dev/null \
+               && curl -fsS http://localhost:3000 > /dev/null; then
+              echo "Gateway + frontend up after ${i} attempts"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Stack failed to come up"
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Smoke test the gateway routes
+        run: |
+          curl -fsS http://localhost:8090/health | tee /tmp/gw_health.json
+          curl -fsS http://localhost:5000/health | tee /tmp/mlflow_health.txt
+          curl -fsS http://localhost:3001/api/health | tee /tmp/grafana_health.json || true
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v || true
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Trivy security scan on the just-pushed images (HIGH/CRITICAL gate)
+  # ──────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: Trivy image scan
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [moe-inference, moe-training, moe-monitoring,
+                dashboard-gateway, dashboard-auth, dashboard-inference,
+                dashboard-upload, dashboard-report, dashboard-frontend]
+    steps:
+      - name: Run Trivy on ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USER }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"   # report only — flip to "1" later to block on HIGH/CRITICAL
+          ignore-unfixed: true
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+        continue-on-error: true
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Slack notification — fires once at the end with overall status.
+  # No-ops cleanly if SLACK_WEBHOOK_URL secret isn't set.
+  # ──────────────────────────────────────────────────────────────────────
+  notify:
+    name: Slack notify
+    if: always()
+    needs: [build-and-push, train-and-log, deploy-and-smoke-test, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute overall status
+        id: status
+        run: |
+          if [[ "${{ needs.build-and-push.result }}" == "failure" \
+             || "${{ needs.train-and-log.result }}" == "failure" \
+             || "${{ needs.deploy-and-smoke-test.result }}" == "failure" ]]; then
+            echo "color=danger" >> "$GITHUB_OUTPUT"
+            echo "emoji=:x:"     >> "$GITHUB_OUTPUT"
+            echo "text=CD failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "color=good" >> "$GITHUB_OUTPUT"
+            echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
+            echo "text=CD succeeded" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post to Slack
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "$(cat <<EOF
+          {
+            "attachments": [{
+              "color": "${{ steps.status.outputs.color }}",
+              "title": "${{ steps.status.outputs.emoji }} ${{ steps.status.outputs.text }}",
+              "fields": [
+                {"title": "Tag",        "value": "${{ env.IMAGE_TAG }}", "short": true},
+                {"title": "Branch",     "value": "${{ github.ref_name }}", "short": true},
+                {"title": "Build/push", "value": "${{ needs.build-and-push.result }}", "short": true},
+                {"title": "Train",      "value": "${{ needs.train-and-log.result }}", "short": true},
+                {"title": "Deploy",     "value": "${{ needs.deploy-and-smoke-test.result }}", "short": true},
+                {"title": "Trivy scan", "value": "${{ needs.security-scan.result }}", "short": true}
+              ],
+              "footer": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }]
+          }
+          EOF
+          )" "$SLACK_WEBHOOK_URL"

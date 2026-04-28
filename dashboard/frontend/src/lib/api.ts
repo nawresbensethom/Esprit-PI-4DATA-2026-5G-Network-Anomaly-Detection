@@ -92,3 +92,105 @@ export async function predictBatch(file: File): Promise<BatchPrediction> {
     body: form,
   });
 }
+
+// ── Live model metrics (from MLflow last run, or baseline_stats fallback) ──
+
+export interface ModelMetrics {
+  source: string;
+  available: boolean;
+  run_id?: string;
+  run_name?: string;
+  experiment?: string;
+  end_time_ms?: number;
+  status?: string;
+  accuracy?: number | null;
+  f1?: number | null;
+  recall?: number | null;
+  pr_auc?: number | null;
+  auc_roc?: number | null;
+  version?: string;
+  error?: string;
+}
+
+export async function getModelMetrics(): Promise<ModelMetrics> {
+  return request<ModelMetrics>("/api/predict/metrics");
+}
+
+// ── Training ─────────────────────────────────────────────────────────────
+
+export interface TrainOptions {
+  data_5g?: string;
+  data_6g?: string;
+  artefacts_dir?: string;
+  seed?: number;
+  ae_epochs?: number;
+  gate_epochs?: number;
+  xgb_n_estimators?: number;
+  mlflow_tracking_uri?: string;
+  experiment?: string;
+  no_mlflow?: boolean;
+  reload_inference?: boolean;
+}
+
+export interface TrainStartResponse {
+  status: "accepted" | string;
+  message: string;
+}
+
+export interface TrainStatusResponse {
+  running: boolean;
+  last_result: null | {
+    success: boolean;
+    output?: string;
+    error?: string;
+    reload_inference?: { status_code: number | null; ok: boolean; error?: string };
+  };
+}
+
+export async function trainStart(options: TrainOptions = {}): Promise<TrainStartResponse> {
+  return request<TrainStartResponse>("/api/train/start", {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}
+
+export async function trainStatus(): Promise<TrainStatusResponse> {
+  return request<TrainStatusResponse>("/api/train/status");
+}
+
+export async function trainReload(): Promise<void> {
+  await request<void>("/api/train/reload", { method: "POST" });
+}
+
+// ── Drift / monitoring ───────────────────────────────────────────────────
+
+export interface DriftOptions {
+  window_days?: number;
+  psi_threshold?: number;
+  ks_p_threshold?: number;
+}
+
+export interface DriftReport {
+  status: "ok" | "drift_detected" | "no_data" | "no_run_yet" | string;
+  window_days?: number;
+  n_requests?: number;
+  baseline_attack_rate?: number;
+  recent_mean_attack_rate?: number;
+  psi_attack_rate?: number;
+  psi_threshold?: number;
+  ks_statistic?: number;
+  ks_p_value?: number;
+  ks_p_threshold?: number;
+  alerts?: string[];
+}
+
+export async function driftRun(options: DriftOptions = {}): Promise<DriftReport> {
+  return request<DriftReport>("/api/drift/run", {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}
+
+export async function driftLast(): Promise<DriftReport> {
+  return request<DriftReport>("/api/drift/last");
+}

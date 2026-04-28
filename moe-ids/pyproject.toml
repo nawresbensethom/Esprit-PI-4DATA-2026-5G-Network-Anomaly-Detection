@@ -32,6 +32,9 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.5",
     "httpx>=0.25",
+    "black>=24.0",
+    "bandit>=1.7",
+    "pip-audit>=2.6",
 ]
 api = [
     "fastapi>=0.104",
@@ -43,6 +46,10 @@ api = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["moe_ids"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
 
 [tool.ruff]
 line-length = 100

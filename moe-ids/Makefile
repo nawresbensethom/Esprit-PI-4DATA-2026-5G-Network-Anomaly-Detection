@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck train serve clean demo-batch
+.PHONY: install test lint typecheck train serve serve-training serve-monitoring clean demo-batch format format-check security
 
 PYTHON := python
 PIP    := pip
@@ -16,7 +16,19 @@ test-integration:
 	pytest tests/integration/ -v -s
 
 lint:
-	ruff check moe_ids/ scripts/ tests/
+	ruff check moe_ids/ scripts/ tests/ services/
+
+format:
+	black moe_ids/ scripts/ tests/ services/
+	ruff check --fix moe_ids/ scripts/ tests/ services/
+
+format-check:
+	black --check moe_ids/ scripts/ tests/ services/
+	ruff check moe_ids/ scripts/ tests/ services/
+
+security:
+	bandit -r moe_ids/ services/ scripts/ -ll
+	pip-audit --strict || true
 
 typecheck:
 	mypy moe_ids/ scripts/
@@ -44,7 +56,13 @@ evaluate:
 		--data-6g "$${DATA_6G_PATH:-../MoE/AIoT_6G_CLEANED.csv}"
 
 serve:
-	uvicorn services.api.main:app --host 0.0.0.0 --port 8000 --reload
+	uvicorn services.inference.main:app --host 0.0.0.0 --port 8000 --reload
+
+serve-training:
+	uvicorn services.training.main:app --host 0.0.0.0 --port 8010 --reload
+
+serve-monitoring:
+	uvicorn services.monitoring.main:app --host 0.0.0.0 --port 8011 --reload
 
 demo-batch:
 	@echo "Posting sample 5G CSV to batch endpoint..."

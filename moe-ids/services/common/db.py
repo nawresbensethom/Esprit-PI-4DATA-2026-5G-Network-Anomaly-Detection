@@ -1,7 +1,7 @@
 """
-PostgreSQL prediction log writer.
-Writes one row per batch request to the `prediction_log` table.
-Falls back silently if DB is unavailable — never blocks a response.
+PostgreSQL prediction log writer. Used by the inference service to persist
+one row per batch request, and by the monitoring service to read them back
+for drift analysis.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _conn_lock = threading.Lock()
-_conn: Any = None  # psycopg2 connection
+_conn: Any = None
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS prediction_log (
@@ -56,7 +56,6 @@ def _get_conn(db_url: str) -> Any:
 
 
 def log_prediction(db_url: str | None, record: dict) -> None:
-    """Write one prediction record to PostgreSQL. Best-effort, never raises."""
     if not db_url:
         return
     try:
@@ -68,4 +67,28 @@ def log_prediction(db_url: str | None, record: dict) -> None:
     except Exception as exc:
         logger.debug("Failed to write prediction log to DB: %s", exc)
         global _conn
-        _conn = None  # force reconnect on next call
+        _conn = None
+
+
+def read_recent_predictions(db_url: str | None, window_days: int = 7) -> list[dict]:
+    """Read prediction_log rows from the last N days — used by monitoring."""
+    if not db_url:
+        return []
+    try:
+        conn = _get_conn(db_url)
+        if conn is None:
+            return []
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT request_id, ts, model_version, schema, n_rows, n_attack, "
+                "n_benign, mean_probability, attack_rate "
+                "FROM prediction_log "
+                "WHERE ts >= now() - (%s || ' days')::interval "
+                "ORDER BY ts DESC",
+                (str(window_days),),
+            )
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+    except Exception as exc:
+        logger.debug("Failed to read prediction log: %s", exc)
+        return []

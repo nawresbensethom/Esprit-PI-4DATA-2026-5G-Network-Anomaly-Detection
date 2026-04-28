@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Icon, Kpi, Mark, Panel, cls, fmtN, fmtPct } from "@/components/ui";
-import { clearSession, getUser, predictBatch, type BatchPrediction, type User } from "@/lib/api";
+import {
+  clearSession,
+  getModelMetrics,
+  getUser,
+  predictBatch,
+  type BatchPrediction,
+  type ModelMetrics,
+  type User,
+} from "@/lib/api";
 
 type Stage = "idle" | "ready" | "running" | "done" | "error";
 
@@ -15,6 +23,7 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BatchPrediction | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [modelMetrics, setModelMetrics] = useState<ModelMetrics | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -22,6 +31,22 @@ export default function UploadPage() {
     if (!u) router.replace("/login");
     else setUser(u);
   }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const m = await getModelMetrics();
+        if (!cancelled) setModelMetrics(m);
+      } catch {
+        if (!cancelled) setModelMetrics({ source: "fetch_failed", available: false });
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
 
   function pick() { inputRef.current?.click(); }
 
@@ -104,6 +129,40 @@ export default function UploadPage() {
             <div>
               <h1 className="page-title">New scan</h1>
               <div className="page-desc">Upload a CSV of 5G/6G network flows. Routed through the gateway → inference-svc → MoE model.</div>
+            </div>
+          </div>
+
+          <div className="grid dash-grid" style={{ marginBottom: 12 }}>
+            <div className="span-3">
+              <Kpi
+                label="Model accuracy"
+                value={
+                  modelMetrics?.accuracy != null
+                    ? fmtPct(modelMetrics.accuracy)
+                    : "—"
+                }
+                sub={modelMetrics?.run_name ?? modelMetrics?.source ?? "fetching…"}
+                accent
+              />
+            </div>
+            <div className="span-3">
+              <Kpi
+                label="F1"
+                value={modelMetrics?.f1 != null ? modelMetrics.f1.toFixed(3) : "—"}
+              />
+            </div>
+            <div className="span-3">
+              <Kpi
+                label="ROC AUC"
+                value={modelMetrics?.auc_roc != null ? modelMetrics.auc_roc.toFixed(3) : "—"}
+              />
+            </div>
+            <div className="span-3">
+              <Kpi
+                label="MLflow run"
+                value={modelMetrics?.run_id ? modelMetrics.run_id.slice(0, 8) : "—"}
+                sub={modelMetrics?.experiment ?? "unified_moe"}
+              />
             </div>
           </div>
 

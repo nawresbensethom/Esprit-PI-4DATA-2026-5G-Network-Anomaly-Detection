@@ -1,0 +1,387 @@
+name: ids-platform
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unified IDS platform: dashboard (gateway/auth/upload/report/frontend) + the
+# three split MoE IDS microservices (inference/training/monitoring) + data
+# plane (postgres/redis/minio) + MLOps plane (mlflow/prometheus/grafana +
+# node-exporter/cadvisor/pushgateway). Everything resolves each other by DNS —
+# no host.docker.internal hops.
+#
+# Bring up:   docker compose up --build -d
+# Shutdown:   docker compose down            (keep volumes)
+#             docker compose down -v         (wipe volumes — fresh slate)
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  edge:          # gateway-reachable services
+  data:          # internal: databases, object store, scrape targets
+
+services:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # EDGE — single entry point for the browser
+  # ══════════════════════════════════════════════════════════════════════════
+  api-gateway:
+    build: ./dashboard/gateway
+    container_name: ids_gateway
+    ports: ["8090:8090"]
+    environment:
+      AUTH_SERVICE_URL:       http://auth-svc:8001
+      UPLOAD_SERVICE_URL:     http://upload-svc:8002
+      INFERENCE_SERVICE_URL:  http://inference-svc:8003
+      TRAINING_SERVICE_URL:   http://moe-training-svc:8010
+      MONITORING_SERVICE_URL: http://moe-monitoring-svc:8011
+      REPORT_SERVICE_URL:     http://report-svc:8004
+      MLFLOW_URL:             http://mlflow:5000
+      GRAFANA_URL:            http://grafana:3000
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-changeme}
+      FRONTEND_ORIGIN: http://localhost:3000
+    depends_on: [auth-svc]
+    networks: [edge]
+    restart: unless-stopped
+
+  frontend-svc:
+    build: ./dashboard/frontend
+    container_name: ids_frontend
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8090}
+    depends_on: [api-gateway]
+    networks: [edge]
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # IDENTITY & BUSINESS-LAYER SERVICES
+  # ══════════════════════════════════════════════════════════════════════════
+  auth-svc:
+    build: ./dashboard/auth
+    container_name: ids_auth
+    ports: ["8001:8001"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+      JWT_EXPIRY_MINUTES: 60
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [edge, data]
+    restart: unless-stopped
+
+  upload-svc:
+    build: ./dashboard/upload
+    container_name: ids_upload
+    ports: ["8002:8002"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_UPLOADS: uploads
+      INFERENCE_SERVICE_URL: http://inference-svc:8003
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    networks: [edge, data]
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: ./dashboard/upload
+      dockerfile: Dockerfile.worker
+    container_name: ids_celery
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      INFERENCE_SERVICE_URL: http://inference-svc:8003
+      REPORT_SERVICE_URL:    http://report-svc:8004
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [data]
+    restart: unless-stopped
+
+  # Dashboard-side inference proxy: adds per-user context, logs to dashboard DB,
+  # then forwards to the ML service. Step 5 of the plan will flip its upstream
+  # from host.docker.internal to the shared network DNS below.
+  inference-svc:
+    build: ./dashboard/inference
+    container_name: ids_inference_proxy
+    ports: ["8003:8003"]
+    environment:
+      MLOPS_BASE_URL: http://moe-inference-svc:8000
+      MLOPS_API_KEY:  ${INTERNAL_API_KEY:-changeme}
+      MLOPS_TIMEOUT:  60
+    depends_on: [moe-inference-svc]
+    networks: [edge, data]
+    restart: unless-stopped
+
+  report-svc:
+    build: ./dashboard/report
+    container_name: ids_report
+    ports: ["8004:8004"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dashboard}:${POSTGRES_PASSWORD:-dashboard123}@postgres:5432/${POSTGRES_DB:-dashboard}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_EXPORTS: exports
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [edge, data]
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # ML MICROSERVICES — split moe-ids
+  # ══════════════════════════════════════════════════════════════════════════
+  moe-inference-svc:
+    build:
+      context: ./moe-ids
+      dockerfile: services/inference/Dockerfile
+    container_name: moe_inference
+    environment:
+      ARTEFACTS_DIR:     /app/artefacts/production
+      WEBAPP_ORIGIN:     ${WEBAPP_ORIGIN:-http://localhost:3000}
+      API_KEY:           ${INTERNAL_API_KEY:-changeme}
+      LOG_DIR:           /app/logs/predictions
+      MONITORING_DB_URL: postgresql://moe:moe@monitoring_db:5432/moe_monitoring
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      DATA_5G_PATH:      /app/data/Global_CLEANED.csv
+      DATA_6G_PATH:      /app/data/AIoT_6G_CLEANED.csv
+    volumes:
+      - ./moe-ids/artefacts:/app/artefacts
+      - ./MoE:/app/data:ro
+      - moe_api_logs:/app/logs
+    ports: ["8000:8000"]
+    depends_on:
+      monitoring_db: { condition: service_healthy }
+    networks: [edge, data]
+    restart: unless-stopped
+
+  moe-training-svc:
+    build:
+      context: ./moe-ids
+      dockerfile: services/training/Dockerfile
+    container_name: moe_training
+    environment:
+      ARTEFACTS_DIR:        /app/artefacts/production
+      API_KEY:              ${INTERNAL_API_KEY:-changeme}
+      INFERENCE_BASE_URL:   http://moe-inference-svc:8000
+      MLFLOW_TRACKING_URI:  http://mlflow:5000
+      PUSHGATEWAY_URL:      http://pushgateway:9091
+      DATA_5G_PATH:         /app/data/Global_CLEANED.csv
+      DATA_6G_PATH:         /app/data/AIoT_6G_CLEANED.csv
+    volumes:
+      - ./moe-ids/artefacts:/app/artefacts
+      - ./MoE:/app/data:ro
+    ports: ["8010:8010"]
+    depends_on: [mlflow, pushgateway, moe-inference-svc]
+    networks: [edge, data]
+    restart: unless-stopped
+
+  moe-monitoring-svc:
+    build:
+      context: ./moe-ids
+      dockerfile: services/monitoring/Dockerfile
+    container_name: moe_monitoring
+    environment:
+      ARTEFACTS_DIR:     /app/artefacts/production
+      API_KEY:           ${INTERNAL_API_KEY:-changeme}
+      LOG_DIR:           /app/logs/predictions
+      MONITORING_DB_URL: postgresql://moe:moe@monitoring_db:5432/moe_monitoring
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - ./moe-ids/artefacts:/app/artefacts:ro
+      - moe_api_logs:/app/logs:ro
+    ports: ["8011:8011"]
+    depends_on:
+      monitoring_db: { condition: service_healthy }
+    networks: [edge, data]
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # DATA PLANE
+  # ══════════════════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: ids_postgres
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-dashboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dashboard123}
+      POSTGRES_DB:       ${POSTGRES_DB:-dashboard}
+    ports: ["5432:5432"]
+    volumes: [dashboard_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dashboard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [data]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ids_redis
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [data]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: ids_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes: [miniodata:/data]
+    networks: [data]
+    restart: unless-stopped
+
+  mlflow_db:
+    image: postgres:15-alpine
+    container_name: moe_mlflow_db
+    environment:
+      POSTGRES_USER:     mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB:       mlflow
+    volumes: [mlflow_db_data:/var/lib/postgresql/data]
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [data]
+    restart: unless-stopped
+
+  monitoring_db:
+    image: postgres:15-alpine
+    container_name: moe_monitoring_db
+    environment:
+      POSTGRES_USER:     moe
+      POSTGRES_PASSWORD: moe
+      POSTGRES_DB:       moe_monitoring
+    volumes: [monitoring_db_data:/var/lib/postgresql/data]
+    ports: ["5434:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moe -d moe_monitoring"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [data]
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MLOPS / OBSERVABILITY PLANE
+  # ══════════════════════════════════════════════════════════════════════════
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.21.3
+    container_name: moe_mlflow
+    depends_on:
+      mlflow_db: { condition: service_healthy }
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@mlflow_db:5432/mlflow
+      MLFLOW_ARTIFACT_ROOT: /mlruns_artifacts
+      MLFLOW_HOST: "0.0.0.0"
+      MLFLOW_PORT: "5000"
+    volumes: [mlruns_artifacts:/mlruns_artifacts]
+    ports: ["5000:5000"]
+    command: >
+      sh -c "pip install psycopg2-binary -q &&
+             mlflow server
+               --backend-store-uri postgresql://mlflow:mlflow@mlflow_db:5432/mlflow
+               --artifacts-destination /mlruns_artifacts
+               --host 0.0.0.0
+               --port 5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [edge, data]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: moe_prometheus
+    volumes:
+      - ./moe-ids/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    ports: ["9090:9090"]
+    depends_on: [moe-inference-svc]
+    networks: [edge, data]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: moe_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./moe-ids/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./moe-ids/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+    networks: [edge]
+    restart: unless-stopped
+
+  # Host-level machine metrics (CPU, memory, disk, network)
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: moe_node_exporter
+    pid: host
+    volumes: ["/:/host:ro,rslave"]
+    command: ["--path.rootfs=/host"]
+    ports: ["9100:9100"]
+    networks: [data]
+    restart: unless-stopped
+
+  # Per-container metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: moe_cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports: ["8088:8080"]
+    networks: [data]
+    restart: unless-stopped
+
+  # Receives pushed model metrics from train.py
+  pushgateway:
+    image: prom/pushgateway:v1.7.0
+    container_name: moe_pushgateway
+    ports: ["9091:9091"]
+    networks: [data]
+    restart: unless-stopped
+
+
+volumes:
+  dashboard_pgdata:
+  miniodata:
+  mlflow_db_data:
+  mlruns_artifacts:
+  monitoring_db_data:
+  moe_api_logs:
+  prometheus_data:
+  grafana_data:

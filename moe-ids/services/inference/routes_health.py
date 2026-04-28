@@ -1,23 +1,24 @@
 from __future__ import annotations
 
+import subprocess
+
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 
 from moe_ids import __version__
-from services.api.dependencies import get_predictor
-from services.api.metrics import prometheus_response
+from services.common.metrics import prometheus_response
+from services.common.predictor import get_predictor
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/healthz")
 def liveness() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "service": "inference"}
 
 
 @router.get("/readyz")
 def readiness() -> dict:
-    """Returns 200 only if the model is loaded and a warmup prediction succeeded."""
     try:
         predictor = get_predictor()
     except HTTPException:
@@ -28,9 +29,9 @@ def readiness() -> dict:
 
     import pandas as pd
 
-    # Warmup: run one synthetic row through the full pipeline
     try:
         from moe_ids.schemas import ARGUS_SIGNATURE_COLUMNS
+
         argus_dummy = pd.DataFrame(columns=ARGUS_SIGNATURE_COLUMNS)
         argus_dummy.loc[0] = 0.0
         predictor.predict(argus_dummy)
@@ -53,16 +54,20 @@ def version() -> dict:
         model_version = "not_loaded"
         manifest = {}
 
-    import subprocess
     try:
-        git_commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
-        ).decode().strip()
+        git_commit = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+            )
+            .decode()
+            .strip()
+        )
     except Exception:
         git_commit = "unknown"
 
     return {
         "api_version": __version__,
+        "service": "inference",
         "model_version": model_version,
         "git_commit": git_commit,
         "manifest_seed": manifest.get("seed"),
@@ -71,5 +76,4 @@ def version() -> dict:
 
 @router.get("/metrics", include_in_schema=False)
 def metrics() -> Response:
-    """Prometheus scrape endpoint."""
     return Response(content=prometheus_response(), media_type="text/plain; version=0.0.4")

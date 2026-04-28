@@ -1,6 +1,8 @@
 """
 POST /predict/batch — accepts a CSV file, returns predictions for every row.
 POST /admin/reload  — hot-reloads the model without a restart.
+
+Lives in the inference service because that's where the model is resident.
 """
 from __future__ import annotations
 
@@ -16,6 +18,21 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from moe_ids.config import settings
+from moe_ids.gate import EXPERT_NAMES
+from moe_ids.schemas import SchemaError, detect_schema
+from services.common.auth import AuthDep
+from services.common.db import log_prediction
+from services.common.metrics import (
+    ATTACK_PREDICTIONS,
+    ATTACK_RATE_GAUGE,
+    MODEL_RELOAD_COUNT,
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+    ROWS_PROCESSED,
+)
+from services.common.predictor import PredictorDep, reload_predictor
 
 
 class BatchSummary(BaseModel):
@@ -36,19 +53,6 @@ class BatchPredictionResponse(BaseModel):
     expert_order: list[str]
     summary: BatchSummary
 
-from moe_ids.config import settings
-from moe_ids.gate import EXPERT_NAMES
-from moe_ids.schemas import SchemaError, detect_schema
-from services.api.db import log_prediction
-from services.api.dependencies import AuthDep, PredictorDep, reload_predictor
-from services.api.metrics import (
-    ATTACK_PREDICTIONS,
-    ATTACK_RATE_GAUGE,
-    MODEL_RELOAD_COUNT,
-    REQUEST_COUNT,
-    REQUEST_LATENCY,
-    ROWS_PROCESSED,
-)
 
 router = APIRouter(tags=["inference"])
 
@@ -62,7 +66,6 @@ def _ensure_log_dir() -> Path:
 
 
 def _append_prediction_log(record: dict) -> None:
-    """Append one JSON line to today's prediction log file (best-effort)."""
     try:
         log_dir = _ensure_log_dir()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -70,7 +73,7 @@ def _append_prediction_log(record: dict) -> None:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except Exception:
-        pass  # never block a response on logging
+        pass
 
 
 @router.post("/predict/batch", response_model=BatchPredictionResponse)
@@ -83,7 +86,6 @@ async def predict_batch(
     request_id = str(uuid.uuid4())
     _t0 = time.perf_counter()
 
-    # ── Size guard ────────────────────────────────────────────────────────
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > _MAX_BYTES:
         raise HTTPException(
@@ -98,7 +100,6 @@ async def predict_batch(
             detail=f"File exceeds {settings.max_batch_file_mb} MB limit.",
         )
 
-    # ── Parse CSV ─────────────────────────────────────────────────────────
     try:
         df = pd.read_csv(io.BytesIO(raw))
     except Exception as exc:
@@ -113,7 +114,6 @@ async def predict_batch(
             detail="CSV is empty.",
         )
 
-    # ── Schema detection ──────────────────────────────────────────────────
     schema = detect_schema(df)
     if schema == "unknown":
         detected_cols = list(df.columns[:15])
@@ -126,7 +126,6 @@ async def predict_batch(
             },
         )
 
-    # ── Predict ───────────────────────────────────────────────────────────
     try:
         result = predictor.predict(df)
     except SchemaError as exc:
@@ -146,7 +145,6 @@ async def predict_batch(
         "attack_rate": attack_rate,
     }
 
-    # ── Prometheus metrics ────────────────────────────────────────────────
     REQUEST_COUNT.labels(schema=schema, status="ok").inc()
     REQUEST_LATENCY.labels(schema=schema).observe(time.perf_counter() - _t0)
     ROWS_PROCESSED.labels(schema=schema).inc(len(result.predictions))
@@ -165,32 +163,36 @@ async def predict_batch(
         "summary": summary,
     }
 
-    # ── Async log (best-effort, never blocks response) ────────────────────
-    _append_prediction_log({
-        "request_id": request_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model_version": result.model_version,
-        "schema": schema,
-        "n_rows": len(df),
-        "summary": summary,
-    })
-    log_prediction(settings.monitoring_db_url or None, {
-        "request_id": request_id,
-        "model_version": result.model_version,
-        "schema": schema,
-        "n_rows": len(df),
-        "n_attack": n_attack,
-        "n_benign": len(result.predictions) - n_attack,
-        "mean_probability": float(np.mean(result.probabilities)),
-        "attack_rate": attack_rate,
-    })
+    _append_prediction_log(
+        {
+            "request_id": request_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "model_version": result.model_version,
+            "schema": schema,
+            "n_rows": len(df),
+            "summary": summary,
+        }
+    )
+    log_prediction(
+        settings.monitoring_db_url or None,
+        {
+            "request_id": request_id,
+            "model_version": result.model_version,
+            "schema": schema,
+            "n_rows": len(df),
+            "n_attack": n_attack,
+            "n_benign": len(result.predictions) - n_attack,
+            "mean_probability": float(np.mean(result.probabilities)),
+            "attack_rate": attack_rate,
+        },
+    )
 
     return JSONResponse(content=response_body)
 
 
 @router.post("/admin/reload", status_code=status.HTTP_204_NO_CONTENT)
 def admin_reload(_auth: AuthDep) -> None:
-    """Hot-reload the model from disk. Requires X-Api-Key header."""
+    """Hot-reload the model from disk. Called by the gateway after training."""
     try:
         reload_predictor()
         MODEL_RELOAD_COUNT.inc()

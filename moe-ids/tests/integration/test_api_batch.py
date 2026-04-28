@@ -76,8 +76,8 @@ def stub_predictor():
 @pytest.fixture(scope="module")
 def client(stub_predictor):
     """TestClient with the stub predictor injected."""
-    import services.api.dependencies as deps
-    from services.api.main import create_app
+    import services.common.predictor as deps
+    from services.inference.main import create_app
 
     app = create_app()
 

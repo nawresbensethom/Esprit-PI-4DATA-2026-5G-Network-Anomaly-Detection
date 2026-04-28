@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.metrics import (
+    accuracy_score,
     average_precision_score,
     f1_score,
     precision_score,
@@ -57,6 +58,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--mlflow-tracking-uri", default="http://localhost:5000")
     p.add_argument("--experiment", default="unified_moe")
     p.add_argument("--no-mlflow", action="store_true", help="Skip MLflow logging (offline mode)")
+    p.add_argument(
+        "--pushgateway-url",
+        default=None,
+        help="Prometheus Pushgateway URL (default: env PUSHGATEWAY_URL, else disabled)",
+    )
+    p.add_argument(
+        "--no-pushgateway",
+        action="store_true",
+        help="Skip pushing model metrics to the Prometheus Pushgateway",
+    )
     return p.parse_args()
 
 
@@ -67,12 +78,45 @@ def _metrics(y_true: np.ndarray, proba: np.ndarray, name: str) -> dict:
     n_classes = len(np.unique(y_true))
     return {
         "name": name,
+        "accuracy": float(accuracy_score(y_true, pred)),
         "f1": float(f1_score(y_true, pred, zero_division=0)),
         "recall": float(recall_score(y_true, pred, zero_division=0)),
         "precision": float(precision_score(y_true, pred, zero_division=0)),
         "auc_roc": float(roc_auc_score(y_true, proba)) if n_classes > 1 else float("nan"),
         "pr_auc": float(average_precision_score(y_true, proba)) if n_classes > 1 else float("nan"),
     }
+
+
+def _push_model_metrics(gate_metrics: dict, pushgateway_url: str | None) -> None:
+    """Publish last-run model metrics to the Prometheus Pushgateway.
+
+    Best-effort: a monitoring failure must never fail a training run.
+    """
+    if not pushgateway_url:
+        return
+    try:
+        import time as _time
+
+        from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+        reg = CollectorRegistry()
+        Gauge("moe_ids_model_accuracy", "Last training accuracy", registry=reg).set(
+            float(gate_metrics.get("accuracy", float("nan")))
+        )
+        Gauge("moe_ids_model_f1", "Last training F1", registry=reg).set(
+            float(gate_metrics.get("f1", float("nan")))
+        )
+        Gauge("moe_ids_model_auc", "Last training ROC AUC", registry=reg).set(
+            float(gate_metrics.get("auc_roc", float("nan")))
+        )
+        Gauge("moe_ids_model_pr_auc", "Last training PR AUC", registry=reg).set(
+            float(gate_metrics.get("pr_auc", float("nan")))
+        )
+        Gauge("moe_ids_model_run_ts", "Unix timestamp of last run", registry=reg).set(_time.time())
+        push_to_gateway(pushgateway_url, job="moe_ids_train", registry=reg)
+        print(f"  Pushed model metrics to {pushgateway_url}")
+    except Exception as exc:
+        print(f"[WARN] Could not push model metrics to Pushgateway: {exc}")
 
 
 def _print_metrics(m: dict) -> None:
@@ -442,6 +486,14 @@ def _run_training(args: argparse.Namespace) -> dict:
 
     print(f"\n✓ All artefacts saved to '{out_dir}/'")
 
+    # ── Push last-run metrics to Prometheus Pushgateway ──
+    if not getattr(args, "no_pushgateway", False):
+        import os as _os
+
+        pg_url = args.pushgateway_url or _os.environ.get("PUSHGATEWAY_URL")
+        if pg_url:
+            _push_model_metrics(gate_metrics, pg_url)
+
     return {**metrics_5g, **metrics_6g, "MoE": gate_metrics}
 
 
@@ -486,6 +538,7 @@ def main() -> None:
         flat_metrics: dict[str, float] = {}
         for key, m in all_metrics.items():
             prefix = key.replace("/", "_").replace(" ", "_").lower()
+            flat_metrics[f"{prefix}_accuracy"] = m.get("accuracy", float("nan"))
             flat_metrics[f"{prefix}_f1"] = m["f1"]
             flat_metrics[f"{prefix}_recall"] = m["recall"]
             flat_metrics[f"{prefix}_precision"] = m["precision"]
@@ -494,6 +547,7 @@ def main() -> None:
 
         # Top-level gate metrics used by promote.py
         gate = all_metrics["MoE"]
+        flat_metrics["moe_accuracy"] = gate.get("accuracy", float("nan"))
         flat_metrics["moe_f1"] = gate["f1"]
         flat_metrics["moe_recall"] = gate["recall"]
         flat_metrics["moe_pr_auc"] = gate["pr_auc"]
