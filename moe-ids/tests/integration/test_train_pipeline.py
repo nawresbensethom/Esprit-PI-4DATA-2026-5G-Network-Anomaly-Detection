@@ -2,6 +2,7 @@
 Integration test: runs the full training pipeline on tiny fixture CSVs
 and asserts all nine artefacts are saved and loadable.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -63,18 +64,26 @@ def trained_artefacts_dir(tmp_path_factory):
     art_dir = out_dir / "artefacts"
 
     import os
+
     env = {**os.environ, "PYTHONUTF8": "1"}
     result = subprocess.run(
         [
             sys.executable,
             str(SCRIPTS_DIR / "train.py"),
-            "--data-5g", str(csv5),
-            "--data-6g", str(csv6),
-            "--artefacts-dir", str(art_dir),
-            "--seed", "42",
-            "--ae-epochs", "3",
-            "--gate-epochs", "3",
-            "--xgb-n-estimators", "10",
+            "--data-5g",
+            str(csv5),
+            "--data-6g",
+            str(csv6),
+            "--artefacts-dir",
+            str(art_dir),
+            "--seed",
+            "42",
+            "--ae-epochs",
+            "3",
+            "--gate-epochs",
+            "3",
+            "--xgb-n-estimators",
+            "10",
             "--no-mlflow",
         ],
         capture_output=True,

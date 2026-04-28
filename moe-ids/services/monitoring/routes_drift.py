@@ -5,6 +5,7 @@ GET  /drift/last — return the most recent drift report (in-process cache)
 Wraps the standalone `scripts/detect_drift.py` CLI as an HTTP service.
 On drift detection, posts an alert to SLACK_WEBHOOK_URL if configured.
 """
+
 from __future__ import annotations
 
 import json
@@ -72,6 +73,7 @@ def _post_drift_alert(report: dict) -> None:
             client.post(SLACK_WEBHOOK_URL, content=json.dumps(payload))
     except Exception:
         pass
+
 
 router = APIRouter(tags=["monitoring"])
 

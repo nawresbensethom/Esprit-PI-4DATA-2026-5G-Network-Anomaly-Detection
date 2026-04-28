@@ -2,6 +2,7 @@
 Save and load all nine coupled model artefacts.
 Strict version checking: refuses to load if any artefact's version mismatches manifest.
 """
+
 from __future__ import annotations
 
 import pickle
@@ -22,11 +23,11 @@ from moe_ids.projection import BINARY_FEATURES, NUMERIC_FEATURES, UNIFIED_FEATUR
 class Artefacts:
     version: str
     unified_scaler: StandardScaler
-    slice_experts: dict[str, XGBClassifier]          # keys: eMBB, mMTC, URLLC
-    proto_experts: dict[str, Any]                     # keys: TCP, UDP (Keras models)
+    slice_experts: dict[str, XGBClassifier]  # keys: eMBB, mMTC, URLLC
+    proto_experts: dict[str, Any]  # keys: TCP, UDP (Keras models)
     slice_calibrators: dict[str, LogisticRegression]
     proto_calibrators: dict[str, LogisticRegression]
-    gate_model: Any                                   # Keras Model
+    gate_model: Any  # Keras Model
     manifest: dict = field(default_factory=dict)
 
 

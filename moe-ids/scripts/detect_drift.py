@@ -17,6 +17,7 @@ Usage:
         --psi-threshold 0.2 \
         --ks-p-threshold 0.05
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,8 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
-
 # ── PSI helpers ──────────────────────────────────────────────────────────────
+
 
 def _safe_psi(p: float, q: float) -> float:
     """PSI contribution for one bucket, guarded against log(0)."""
@@ -70,6 +71,7 @@ def compute_psi(baseline: np.ndarray, current: np.ndarray, n_bins: int = 10) -> 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
 
+
 class PredictionRecord(NamedTuple):
     request_id: str
     timestamp: str
@@ -106,14 +108,16 @@ def load_recent_logs(log_dir: Path, window_days: int) -> list[PredictionRecord]:
                         if entry_dt < cutoff:
                             continue
                     summary = obj.get("summary", {})
-                    records.append(PredictionRecord(
-                        request_id=obj.get("request_id", ""),
-                        timestamp=ts,
-                        schema=obj.get("schema", "unknown"),
-                        n_rows=obj.get("n_rows", 0),
-                        attack_rate=float(summary.get("attack_rate", 0.0)),
-                        mean_probability=float(summary.get("mean_probability", 0.0)),
-                    ))
+                    records.append(
+                        PredictionRecord(
+                            request_id=obj.get("request_id", ""),
+                            timestamp=ts,
+                            schema=obj.get("schema", "unknown"),
+                            n_rows=obj.get("n_rows", 0),
+                            attack_rate=float(summary.get("attack_rate", 0.0)),
+                            mean_probability=float(summary.get("mean_probability", 0.0)),
+                        )
+                    )
                 except Exception:
                     continue
 
@@ -121,6 +125,7 @@ def load_recent_logs(log_dir: Path, window_days: int) -> list[PredictionRecord]:
 
 
 # ── Drift report ─────────────────────────────────────────────────────────────
+
 
 def run_drift_check(
     artefacts_dir: Path,
@@ -220,8 +225,12 @@ def main() -> None:
         print(f"  Requests     : {report.get('n_requests', 0)}")
         print(f"  Baseline AR  : {report.get('baseline_attack_rate', '?'):.4f}")
         print(f"  Recent AR    : {report.get('recent_mean_attack_rate', '?'):.4f}")
-        print(f"  PSI (AR)     : {report.get('psi_attack_rate', '?'):.4f}  (threshold={args.psi_threshold})")
-        print(f"  KS p-value   : {report.get('ks_p_value', '?'):.4f}  (threshold={args.ks_p_threshold})")
+        print(
+            f"  PSI (AR)     : {report.get('psi_attack_rate', '?'):.4f}  (threshold={args.psi_threshold})"
+        )
+        print(
+            f"  KS p-value   : {report.get('ks_p_value', '?'):.4f}  (threshold={args.ks_p_threshold})"
+        )
         for alert in report.get("alerts", []):
             print(f"  [!] {alert}")
         print()

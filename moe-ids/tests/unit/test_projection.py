@@ -2,6 +2,7 @@
 Critical snapshot tests for projection.py.
 Any silent logic change in project_5g / project_6g will break these tests.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,6 +20,7 @@ PROTO_COLS = ["u_is_tcp", "u_is_udp", "u_is_other"]
 
 
 # ── Shape & schema ────────────────────────────────────────────────────────
+
 
 def test_project_5g_shape(df_5g: pd.DataFrame) -> None:
     out = project_5g(df_5g)
@@ -42,6 +44,7 @@ def test_project_6g_column_order(df_6g: pd.DataFrame) -> None:
 
 # ── NaN / Inf ─────────────────────────────────────────────────────────────
 
+
 def test_project_5g_no_nan(df_5g: pd.DataFrame) -> None:
     out = project_5g(df_5g)
     assert not out.isna().any().any(), "NaN values found in project_5g output"
@@ -64,6 +67,7 @@ def test_project_6g_no_inf(df_6g: pd.DataFrame) -> None:
 
 # ── Binary columns ────────────────────────────────────────────────────────
 
+
 def test_project_5g_binary_columns(df_5g: pd.DataFrame) -> None:
     out = project_5g(df_5g)
     for col in BINARY_COLS:
@@ -80,6 +84,7 @@ def test_project_6g_binary_columns(df_6g: pd.DataFrame) -> None:
 
 # ── Protocol one-hot sums to exactly 1 ───────────────────────────────────
 
+
 def test_project_5g_proto_onehot_sum(df_5g: pd.DataFrame) -> None:
     out = project_5g(df_5g)
     sums = out[PROTO_COLS].sum(axis=1)
@@ -94,6 +99,7 @@ def test_project_6g_proto_onehot_sum(df_6g: pd.DataFrame) -> None:
 
 # ── Snapshot tests (catches silent projection drift) ─────────────────────
 
+
 def _load_snapshot(name: str) -> dict:
     path = FIXTURES / f"snapshot_{name}.json"
     with open(path) as f:
@@ -107,9 +113,9 @@ def test_project_5g_snapshot(df_5g: pd.DataFrame, row_idx: int) -> None:
     actual = out.iloc[row_idx].to_dict()
     expected = snap[str(row_idx)]
     for col, exp_val in expected.items():
-        assert abs(actual[col] - exp_val) < 1e-9, (
-            f"Row {row_idx} col '{col}': got {actual[col]}, expected {exp_val}"
-        )
+        assert (
+            abs(actual[col] - exp_val) < 1e-9
+        ), f"Row {row_idx} col '{col}': got {actual[col]}, expected {exp_val}"
 
 
 @pytest.mark.parametrize("row_idx", [0, 4, 9])
@@ -119,6 +125,6 @@ def test_project_6g_snapshot(df_6g: pd.DataFrame, row_idx: int) -> None:
     actual = out.iloc[row_idx].to_dict()
     expected = snap[str(row_idx)]
     for col, exp_val in expected.items():
-        assert abs(actual[col] - exp_val) < 1e-9, (
-            f"Row {row_idx} col '{col}': got {actual[col]}, expected {exp_val}"
-        )
+        assert (
+            abs(actual[col] - exp_val) < 1e-9
+        ), f"Row {row_idx} col '{col}': got {actual[col]}, expected {exp_val}"

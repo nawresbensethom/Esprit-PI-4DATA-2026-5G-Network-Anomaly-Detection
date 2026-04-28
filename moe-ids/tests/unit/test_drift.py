@@ -1,6 +1,7 @@
 """
 Unit tests for scripts/detect_drift.py drift detection logic.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,8 +14,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 from detect_drift import compute_psi, load_recent_logs, run_drift_check
 
-
 # ── PSI tests ────────────────────────────────────────────────────────────────
+
 
 def test_psi_identical_distributions():
     rng = np.random.RandomState(0)
@@ -24,8 +25,8 @@ def test_psi_identical_distributions():
 
 def test_psi_very_different_distributions():
     rng = np.random.RandomState(0)
-    baseline = rng.beta(2, 8, size=500)   # skewed low
-    current = rng.beta(8, 2, size=500)    # skewed high
+    baseline = rng.beta(2, 8, size=500)  # skewed low
+    current = rng.beta(8, 2, size=500)  # skewed high
     assert compute_psi(baseline, current) > 0.2
 
 
@@ -44,6 +45,7 @@ def test_psi_near_identical_distributions():
 
 
 # ── Log loading tests ─────────────────────────────────────────────────────────
+
 
 def _write_log(log_dir: Path, filename: str, records: list[dict]) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -83,18 +85,24 @@ def test_load_recent_logs_skips_malformed_lines(tmp_path):
     fname = f"predictions_{now.strftime('%Y-%m-%d')}.jsonl"
     with open(log_dir / fname, "w") as f:
         f.write("not json at all\n")
-        f.write(json.dumps({
-            "request_id": "ok",
-            "timestamp": now.isoformat(),
-            "schema": "cic",
-            "n_rows": 5,
-            "summary": {"attack_rate": 0.1, "mean_probability": 0.2},
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "request_id": "ok",
+                    "timestamp": now.isoformat(),
+                    "schema": "cic",
+                    "n_rows": 5,
+                    "summary": {"attack_rate": 0.1, "mean_probability": 0.2},
+                }
+            )
+            + "\n"
+        )
     records = load_recent_logs(log_dir, window_days=7)
     assert len(records) == 1
 
 
 # ── Full drift check tests ────────────────────────────────────────────────────
+
 
 def _write_baseline(artefacts_dir: Path, attack_rate: float = 0.05) -> None:
     artefacts_dir.mkdir(parents=True, exist_ok=True)
@@ -131,13 +139,18 @@ def test_no_drift_when_attack_rates_match(tmp_path):
             "timestamp": now.isoformat(),
             "schema": "argus",
             "n_rows": 100,
-            "summary": {"attack_rate": float(attack_rates[i]), "mean_probability": float(mean_probs[i])},
+            "summary": {
+                "attack_rate": float(attack_rates[i]),
+                "mean_probability": float(mean_probs[i]),
+            },
         }
         for i in range(50)
     ]
     _write_log(log_dir, f"predictions_{now.strftime('%Y-%m-%d')}.jsonl", records)
 
-    report = run_drift_check(art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05)
+    report = run_drift_check(
+        art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05
+    )
     assert report["status"] == "ok"
     assert report["n_requests"] == 50
 
@@ -163,7 +176,9 @@ def test_drift_detected_when_attack_rate_spikes(tmp_path):
     ]
     _write_log(log_dir, f"predictions_{now.strftime('%Y-%m-%d')}.jsonl", records)
 
-    report = run_drift_check(art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05)
+    report = run_drift_check(
+        art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05
+    )
     assert report["status"] == "drift_detected"
     assert len(report["alerts"]) >= 1
 
@@ -174,5 +189,7 @@ def test_no_data_returns_no_data_status(tmp_path):
     _write_baseline(art_dir)
     log_dir.mkdir()
 
-    report = run_drift_check(art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05)
+    report = run_drift_check(
+        art_dir, log_dir, window_days=7, psi_threshold=0.2, ks_p_threshold=0.05
+    )
     assert report["status"] == "no_data"

@@ -2,6 +2,7 @@
 Structured anomaly injection for the 6G one-class training pipeline.
 Logic ported verbatim from Moe.ipynb — no changes.
 """
+
 from __future__ import annotations
 
 import numpy as np

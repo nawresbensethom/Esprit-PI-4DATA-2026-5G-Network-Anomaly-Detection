@@ -5,6 +5,7 @@ GET  /admin/train/status — polls the running run
 On success, the training service calls the inference service's /admin/reload
 over HTTP so the fresh artefacts go live without a restart.
 """
+
 from __future__ import annotations
 
 import os
@@ -67,15 +68,24 @@ def _run_training(req: TrainRequest) -> None:
         cmd = [
             sys.executable,
             str(ROOT / "scripts" / "train.py"),
-            "--data-5g", req.data_5g,
-            "--data-6g", req.data_6g,
-            "--artefacts-dir", req.artefacts_dir,
-            "--seed", str(req.seed),
-            "--ae-epochs", str(req.ae_epochs),
-            "--gate-epochs", str(req.gate_epochs),
-            "--xgb-n-estimators", str(req.xgb_n_estimators),
-            "--mlflow-tracking-uri", req.mlflow_tracking_uri,
-            "--experiment", req.experiment,
+            "--data-5g",
+            req.data_5g,
+            "--data-6g",
+            req.data_6g,
+            "--artefacts-dir",
+            req.artefacts_dir,
+            "--seed",
+            str(req.seed),
+            "--ae-epochs",
+            str(req.ae_epochs),
+            "--gate-epochs",
+            str(req.gate_epochs),
+            "--xgb-n-estimators",
+            str(req.xgb_n_estimators),
+            "--mlflow-tracking-uri",
+            req.mlflow_tracking_uri,
+            "--experiment",
+            req.experiment,
         ]
         if req.no_mlflow:
             cmd.append("--no-mlflow")

@@ -5,6 +5,7 @@ Used by the dashboard front to show the live model accuracy / F1 / AUC card.
 Hits MLflow's REST API directly (no SDK dep). Falls back to baseline_stats.json
 on the artefacts volume if MLflow is unreachable.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,7 +68,11 @@ async def model_metrics() -> dict:
                 },
             )
             if search.status_code != 200:
-                return {"source": "mlflow_search_failed", "available": False, **_baseline_fallback()}
+                return {
+                    "source": "mlflow_search_failed",
+                    "available": False,
+                    **_baseline_fallback(),
+                }
             runs = search.json().get("runs", [])
             if not runs:
                 return {"source": "mlflow_no_runs", "available": False, **_baseline_fallback()}
@@ -91,4 +96,9 @@ async def model_metrics() -> dict:
                 "auc_roc": metrics.get("moe_auc_roc"),
             }
     except Exception as exc:
-        return {"source": "exception", "available": False, "error": str(exc), **_baseline_fallback()}
+        return {
+            "source": "exception",
+            "available": False,
+            "error": str(exc),
+            **_baseline_fallback(),
+        }

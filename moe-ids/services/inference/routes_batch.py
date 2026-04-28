@@ -4,6 +4,7 @@ POST /admin/reload  — hot-reloads the model without a restart.
 
 Lives in the inference service because that's where the model is resident.
 """
+
 from __future__ import annotations
 
 import io

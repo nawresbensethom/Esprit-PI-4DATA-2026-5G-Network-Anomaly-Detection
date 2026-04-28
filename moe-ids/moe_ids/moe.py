@@ -3,6 +3,7 @@ MoEPredictor — the single public inference orchestrator.
 Ties together: schema detection → projection → scaling → expert scoring
 → calibration → gating → final probability → threshold.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,10 +21,10 @@ from moe_ids.schemas import SchemaError, detect_schema
 
 @dataclass
 class PredictionResult:
-    predictions: np.ndarray      # (n,) int
-    probabilities: np.ndarray    # (n,) float32
-    gate_weights: np.ndarray     # (n, 5) float32
-    expert_scores: np.ndarray    # (n, 5) float32
+    predictions: np.ndarray  # (n,) int
+    probabilities: np.ndarray  # (n,) float32
+    gate_weights: np.ndarray  # (n, 5) float32
+    expert_scores: np.ndarray  # (n, 5) float32
     schema: str
     model_version: str
 
@@ -47,6 +48,7 @@ class MoEPredictor:
     def _build_weights_extractor(self):
         """Return a sub-model that outputs gate weights instead of final probability."""
         import tensorflow as tf
+
         gate = self._a.gate_model
         weights_layer = gate.get_layer("gate_weights")
         return tf.keras.Model(
@@ -110,9 +112,7 @@ class MoEPredictor:
         X = self._a.unified_scaler.transform(projected.values.astype(np.float32))
         expert_scores = self._compute_expert_scores(X)
 
-        proba = self._a.gate_model.predict(
-            [X, expert_scores], verbose=0
-        ).ravel().astype(np.float32)
+        proba = self._a.gate_model.predict([X, expert_scores], verbose=0).ravel().astype(np.float32)
 
         gate_weights = self._gate_weights_model.predict(X, verbose=0).astype(np.float32)
 

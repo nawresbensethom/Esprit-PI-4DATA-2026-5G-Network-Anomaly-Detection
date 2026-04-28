@@ -6,6 +6,7 @@ them exports its own `/metrics` endpoint with the same schema. Prometheus
 scrapes each service independently — labels identify which service the
 sample came from.
 """
+
 from __future__ import annotations
 
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, generate_latest

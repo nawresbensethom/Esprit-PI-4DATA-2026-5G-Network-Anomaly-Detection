@@ -2,6 +2,7 @@
 End-to-end MoEPredictor roundtrip test using a tiny in-memory model.
 Does NOT require saved artefacts — builds minimal stubs.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -30,7 +31,9 @@ def _stub_artefacts() -> Artefacts:
 
     slice_experts, slice_calibrators = {}, {}
     for name in ("eMBB", "mMTC", "URLLC"):
-        clf = XGBClassifier(n_estimators=5, max_depth=2, use_label_encoder=False, eval_metric="logloss")
+        clf = XGBClassifier(
+            n_estimators=5, max_depth=2, use_label_encoder=False, eval_metric="logloss"
+        )
         clf.fit(X_sc, y)
         raw = clf.predict_proba(X_sc)[:, 1]
         cal = LogisticRegression(max_iter=100).fit(raw.reshape(-1, 1), y)
@@ -38,6 +41,7 @@ def _stub_artefacts() -> Artefacts:
         slice_calibrators[name] = cal
 
     from moe_ids.experts import build_autoencoder
+
     proto_experts, proto_calibrators = {}, {}
     for name in ("TCP", "UDP"):
         ae = build_autoencoder(d, bottleneck=4)

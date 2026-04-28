@@ -1,4 +1,5 @@
 """XGBoost slice experts and Keras autoencoder protocol experts."""
+
 from __future__ import annotations
 
 import numpy as np

@@ -6,6 +6,7 @@ Usage:
     python scripts/promote.py --run-id <RUN_ID> --to staging
     python scripts/promote.py --run-id <RUN_ID> --to production
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,14 +29,26 @@ def parse_args() -> argparse.Namespace:
         help="Auto-pick the most recent run from the experiment",
     )
     p.add_argument("--to", choices=["staging", "production"], required=True)
-    p.add_argument("--experiment", default=None,
-                   help="Override experiment name (defaults to settings.mlflow_experiment_name)")
-    p.add_argument("--mlflow-tracking-uri", default=None,
-                   help="Override MLflow URI (defaults to settings.mlflow_tracking_uri)")
-    p.add_argument("--reload-url", default=None,
-                   help="If set, POST to this URL after promotion (e.g. inference /admin/reload)")
-    p.add_argument("--reload-api-key", default=None,
-                   help="X-Api-Key header value for the reload POST (defaults to env API_KEY)")
+    p.add_argument(
+        "--experiment",
+        default=None,
+        help="Override experiment name (defaults to settings.mlflow_experiment_name)",
+    )
+    p.add_argument(
+        "--mlflow-tracking-uri",
+        default=None,
+        help="Override MLflow URI (defaults to settings.mlflow_tracking_uri)",
+    )
+    p.add_argument(
+        "--reload-url",
+        default=None,
+        help="If set, POST to this URL after promotion (e.g. inference /admin/reload)",
+    )
+    p.add_argument(
+        "--reload-api-key",
+        default=None,
+        help="X-Api-Key header value for the reload POST (defaults to env API_KEY)",
+    )
     return p.parse_args()
 
 

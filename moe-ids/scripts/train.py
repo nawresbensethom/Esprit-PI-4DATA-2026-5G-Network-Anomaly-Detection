@@ -9,6 +9,7 @@ Usage:
         --artefacts-dir artefacts \\
         --seed 42
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +44,7 @@ from moe_ids.projection import project_5g, project_6g
 
 # ── CLI ───────────────────────────────────────────────────────────────────
 
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train the Unified MoE IDS")
     p.add_argument("--data-5g", default="../MoE/Global_CLEANED.csv")
@@ -72,6 +74,7 @@ def parse_args() -> argparse.Namespace:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
 
 def _metrics(y_true: np.ndarray, proba: np.ndarray, name: str) -> dict:
     pred = (proba >= 0.5).astype(int)
@@ -128,6 +131,7 @@ def _print_metrics(m: dict) -> None:
 
 # ── 5G pipeline ───────────────────────────────────────────────────────────
 
+
 def _load_5g(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["Label"] = df["Label"].astype(int)
@@ -181,7 +185,11 @@ def train_5g(
         y = sub["Label"].values.astype(int)
 
         X_tr, X_te, y_tr, y_te = train_test_split(
-            proj.values, y, test_size=test_size, random_state=seed, stratify=y if y.sum() > 0 else None
+            proj.values,
+            y,
+            test_size=test_size,
+            random_state=seed,
+            stratify=y if y.sum() > 0 else None,
         )
         X_tr2, X_val, y_tr2, y_val = train_test_split(
             X_tr, y_tr, test_size=0.15, random_state=seed, stratify=y_tr if y_tr.sum() > 0 else None
@@ -198,6 +206,7 @@ def train_5g(
         # Test metrics
         raw_te = clf.predict_proba(X_te)[:, 1]
         from moe_ids.calibration import calibrate
+
         cal_te = calibrate(cal, raw_te)
         all_metrics[name] = _metrics(y_te, cal_te, f"5G/{name}")
         slice_test[name] = (X_te, y_te)
@@ -212,6 +221,7 @@ def train_5g(
 
 
 # ── 6G pipeline ───────────────────────────────────────────────────────────
+
 
 def _load_6g(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -264,9 +274,7 @@ def train_6g(
         X_tr, X_tmp, y_tr, y_tmp = train_test_split(
             proj.values, y, test_size=test_size * 2, random_state=seed
         )
-        X_val, X_te, y_val, y_te = train_test_split(
-            X_tmp, y_tmp, test_size=0.5, random_state=seed
-        )
+        X_val, X_te, y_val, y_te = train_test_split(X_tmp, y_tmp, test_size=0.5, random_state=seed)
 
         # Inject anomalies into val and test — NOT into train
         X_val_aug, y_val_aug = inject_unified_anomalies(
@@ -276,9 +284,7 @@ def train_6g(
             X_te.astype(np.float32), y_te, anomaly_fraction=anomaly_fraction, seed=seed + 1
         )
 
-        ae = train_protocol_autoencoder(
-            X_tr.astype(np.float32), name=name, epochs=ae_epochs
-        )
+        ae = train_protocol_autoencoder(X_tr.astype(np.float32), name=name, epochs=ae_epochs)
         proto_experts[name] = ae
 
         # Calibration: MSE sigmoid on val augmented set
@@ -291,6 +297,7 @@ def train_6g(
         recon_te = ae.predict(X_te_aug.astype(np.float32), verbose=0)
         mse_te = np.mean((X_te_aug - recon_te) ** 2, axis=1)
         from moe_ids.calibration import calibrate
+
         cal_te = calibrate(cal, mse_te)
         all_metrics[name] = _metrics(y_te_aug, cal_te, f"6G/{name}")
         proto_test[name] = (X_te_aug, y_te_aug)
@@ -305,6 +312,7 @@ def train_6g(
 
 
 # ── Gate pipeline ─────────────────────────────────────────────────────────
+
 
 def train_gate(
     X_combined: np.ndarray,
@@ -331,12 +339,14 @@ def train_gate(
     )
 
     X_tr, X_te, y_tr, y_te = train_test_split(
-        X_aug, y_aug, test_size=test_size, random_state=seed,
-        stratify=y_aug if y_aug.sum() > 0 else None
+        X_aug,
+        y_aug,
+        test_size=test_size,
+        random_state=seed,
+        stratify=y_aug if y_aug.sum() > 0 else None,
     )
     X_tr2, X_val, y_tr2, y_val = train_test_split(
-        X_tr, y_tr, test_size=0.15, random_state=seed,
-        stratify=y_tr if y_tr.sum() > 0 else None
+        X_tr, y_tr, test_size=0.15, random_state=seed, stratify=y_tr if y_tr.sum() > 0 else None
     )
 
     def _all_expert_scores(X: np.ndarray) -> np.ndarray:
@@ -355,8 +365,10 @@ def train_gate(
             recon = ae.predict(X, verbose=0)
             mse = np.mean((X - recon) ** 2, axis=1)
             cal = proto_calibrators.get(name)
-            scores[:, j] = calibrate(cal, mse) if cal else (
-                ((mse - mse.min()) / (mse.max() - mse.min() + 1e-9)).astype(np.float32)
+            scores[:, j] = (
+                calibrate(cal, mse)
+                if cal
+                else (((mse - mse.min()) / (mse.max() - mse.min() + 1e-9)).astype(np.float32))
             )
         return scores
 
@@ -366,7 +378,8 @@ def train_gate(
 
     gate = build_gate_model(X_tr2.shape[1])
     gate.fit(
-        [X_tr2, S_tr], y_tr2,
+        [X_tr2, S_tr],
+        y_tr2,
         validation_data=([X_val, S_val], y_val),
         epochs=gate_epochs,
         batch_size=128,
@@ -386,14 +399,20 @@ def train_gate(
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
+
 def _git_commit() -> str:
     """Return the current git commit SHA (short), or 'unknown'."""
     import subprocess
+
     try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
     except Exception:
         return "unknown"
 
@@ -408,12 +427,18 @@ def _run_training(args: argparse.Namespace) -> dict:
     # ── 5G ──
     print("[1/4] Loading and projecting 5G data...")
     df5 = _load_5g(args.data_5g)
-    print(f"  {len(df5):,} rows | Label distribution: {dict(pd.Series(df5['Label']).value_counts())}")
+    print(
+        f"  {len(df5):,} rows | Label distribution: {dict(pd.Series(df5['Label']).value_counts())}"
+    )
 
     print("[2/4] Training 5G slice experts...")
     (
-        slice_experts, slice_calibrators, _slice_test, metrics_5g,
-        X_5g_proj, y_5g,
+        slice_experts,
+        slice_calibrators,
+        _slice_test,
+        metrics_5g,
+        X_5g_proj,
+        y_5g,
     ) = train_5g(df5, args.test_size, args.seed, args.xgb_n_estimators)
 
     print("\n  Per-expert baseline (calibrated, test set):")
@@ -427,8 +452,12 @@ def _run_training(args: argparse.Namespace) -> dict:
 
     print("[3/4] Training 6G protocol autoencoders...")
     (
-        proto_experts, proto_calibrators, _proto_test, metrics_6g,
-        X_6g_proj, y_6g,
+        proto_experts,
+        proto_calibrators,
+        _proto_test,
+        metrics_6g,
+        X_6g_proj,
+        y_6g,
     ) = train_6g(df6, args.test_size, args.seed, args.ae_epochs, args.anomaly_fraction)
 
     print("\n  Per-expert baseline (calibrated, augmented test set):")
@@ -444,9 +473,13 @@ def _run_training(args: argparse.Namespace) -> dict:
     scaler.fit(X_combined)
 
     gate, gate_metrics = train_gate(
-        X_combined, y_combined, scaler,
-        slice_experts, slice_calibrators,
-        proto_experts, proto_calibrators,
+        X_combined,
+        y_combined,
+        scaler,
+        slice_experts,
+        slice_calibrators,
+        proto_experts,
+        proto_calibrators,
         seed=args.seed,
         gate_epochs=args.gate_epochs,
         test_size=args.test_size,
@@ -472,6 +505,7 @@ def _run_training(args: argparse.Namespace) -> dict:
 
     # ── Save baseline stats for drift detection ──
     import json as _json
+
     baseline = {
         "version": args.version,
         "seed": args.seed,

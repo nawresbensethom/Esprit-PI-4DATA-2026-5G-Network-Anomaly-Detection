@@ -1,4 +1,5 @@
 """FastAPI app — MoE IDS inference microservice (port 8000)."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

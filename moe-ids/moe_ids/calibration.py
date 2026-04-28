@@ -1,4 +1,5 @@
 """Platt scaling and AE MSE sigmoid calibration."""
+
 from __future__ import annotations
 
 import numpy as np

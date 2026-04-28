@@ -2,6 +2,7 @@
 Integration tests for POST /predict/batch.
 Uses httpx.AsyncClient against the ASGI app with a real (stub) predictor.
 """
+
 from __future__ import annotations
 
 import io
@@ -17,6 +18,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 # ── App fixture with a stub predictor ────────────────────────────────────
+
 
 @pytest.fixture(scope="module")
 def stub_predictor():
@@ -41,7 +43,9 @@ def stub_predictor():
 
     slice_experts, slice_calibrators = {}, {}
     for name in ("eMBB", "mMTC", "URLLC"):
-        clf = XGBClassifier(n_estimators=5, max_depth=2, use_label_encoder=False, eval_metric="logloss")
+        clf = XGBClassifier(
+            n_estimators=5, max_depth=2, use_label_encoder=False, eval_metric="logloss"
+        )
         clf.fit(X_sc, y)
         raw = clf.predict_proba(X_sc)[:, 1]
         cal = LogisticRegression(max_iter=100).fit(raw.reshape(-1, 1), y)
@@ -62,15 +66,17 @@ def stub_predictor():
     S = rng.rand(n, N_EXPERTS).astype(np.float32)
     gate.fit([X_sc, S], y, epochs=2, verbose=0)
 
-    return MoEPredictor(Artefacts(
-        version="test",
-        unified_scaler=scaler,
-        slice_experts=slice_experts,
-        proto_experts=proto_experts,
-        slice_calibrators=slice_calibrators,
-        proto_calibrators=proto_calibrators,
-        gate_model=gate,
-    ))
+    return MoEPredictor(
+        Artefacts(
+            version="test",
+            unified_scaler=scaler,
+            slice_experts=slice_experts,
+            proto_experts=proto_experts,
+            slice_calibrators=slice_calibrators,
+            proto_calibrators=proto_calibrators,
+            gate_model=gate,
+        )
+    )
 
 
 @pytest.fixture(scope="module")
@@ -89,6 +95,7 @@ def client(stub_predictor):
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+
 def _csv_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
     df.to_csv(buf, index=False)
@@ -96,6 +103,7 @@ def _csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────
+
 
 def test_healthz(client: TestClient) -> None:
     r = client.get("/healthz")

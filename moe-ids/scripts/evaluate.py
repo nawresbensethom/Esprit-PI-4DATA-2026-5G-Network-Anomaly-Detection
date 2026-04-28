@@ -7,6 +7,7 @@ Usage:
         --data-5g ../MoE/Global_CLEANED.csv \\
         --data-6g ../MoE/AIoT_6G_CLEANED.csv
 """
+
 from __future__ import annotations
 
 import argparse

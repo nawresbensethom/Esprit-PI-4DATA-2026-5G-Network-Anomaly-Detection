@@ -1,3 +1,5 @@
 data/raw/data6g/*.csv
 .claude/
 claude.md
+.env
+.env.example

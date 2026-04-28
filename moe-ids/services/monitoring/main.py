@@ -1,4 +1,5 @@
 """FastAPI app — MoE IDS monitoring / drift microservice (port 8011)."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI

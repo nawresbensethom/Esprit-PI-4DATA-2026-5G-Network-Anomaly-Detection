@@ -2,6 +2,7 @@
 Model loader singleton. Only the inference service loads a predictor at
 startup; training and monitoring do not carry the model in memory.
 """
+
 from __future__ import annotations
 
 import threading

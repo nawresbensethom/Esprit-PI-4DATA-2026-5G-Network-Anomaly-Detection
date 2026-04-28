@@ -1,6 +1,7 @@
 """
 POST /predict/realtime — placeholder for the Phase-5 Redis-Streams consumer.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter

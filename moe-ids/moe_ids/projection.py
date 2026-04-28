@@ -2,6 +2,7 @@
 Unified feature projection for 5G (Argus/CICIDS) and 6G (CICFlowMeter) data.
 Zero logic changes from Moe.ipynb — only packaging.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -28,8 +29,13 @@ UNIFIED_FEATURES: list[str] = [
 ]
 
 BINARY_FEATURES: list[str] = [
-    "u_syn", "u_fin", "u_rst", "u_psh",
-    "u_is_tcp", "u_is_udp", "u_is_other",
+    "u_syn",
+    "u_fin",
+    "u_rst",
+    "u_psh",
+    "u_is_tcp",
+    "u_is_udp",
+    "u_is_other",
 ]
 
 NUMERIC_FEATURES: list[str] = [f for f in UNIFIED_FEATURES if f not in BINARY_FEATURES]
@@ -124,11 +130,11 @@ def project_5g(df: pd.DataFrame) -> pd.DataFrame:
     out["u_is_other"] = 0
     for c in proto_cols:
         if "tcp" in c.lower():
-            out["u_is_tcp"] = (out["u_is_tcp"] | (df[c] > 0).astype(int))
+            out["u_is_tcp"] = out["u_is_tcp"] | (df[c] > 0).astype(int)
         elif "udp" in c.lower():
-            out["u_is_udp"] = (out["u_is_udp"] | (df[c] > 0).astype(int))
+            out["u_is_udp"] = out["u_is_udp"] | (df[c] > 0).astype(int)
         else:
-            out["u_is_other"] = (out["u_is_other"] | (df[c] > 0).astype(int))
+            out["u_is_other"] = out["u_is_other"] | (df[c] > 0).astype(int)
 
     none_set = out[["u_is_tcp", "u_is_udp", "u_is_other"]].sum(axis=1) == 0
     out.loc[none_set, "u_is_other"] = 1
@@ -184,11 +190,11 @@ def project_6g(df: pd.DataFrame) -> pd.DataFrame:
     if proto_ohe:
         for c in proto_ohe:
             if "tcp" in c.lower():
-                out["u_is_tcp"] = (out["u_is_tcp"] | (df[c] > 0).astype(int))
+                out["u_is_tcp"] = out["u_is_tcp"] | (df[c] > 0).astype(int)
             elif "udp" in c.lower():
-                out["u_is_udp"] = (out["u_is_udp"] | (df[c] > 0).astype(int))
+                out["u_is_udp"] = out["u_is_udp"] | (df[c] > 0).astype(int)
             else:
-                out["u_is_other"] = (out["u_is_other"] | (df[c] > 0).astype(int))
+                out["u_is_other"] = out["u_is_other"] | (df[c] > 0).astype(int)
     else:
         col_proto = first_available(df, ["Protocol", "protocol"])
         if col_proto:

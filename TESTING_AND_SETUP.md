@@ -36,14 +36,41 @@ You only need to do these once. Total time: ~10 min.
 
 ### 1.3 Local `.env`
 
+The fastest path — auto-generate `.env` with cryptographically strong `INTERNAL_API_KEY` and `JWT_SECRET`:
+
 ```bash
 cd c:/Esprit-PI-4DATA-2026-6G-Network-Anomaly-Detection
+python scripts/init_env.py
+```
+
+This copies `.env.example` → `.env` and fills both secret keys with 64 chars from Python's CSPRNG (`secrets.token_hex` / `secrets.token_urlsafe`). Other keys (Postgres, MinIO, Grafana, Slack) keep their `.env.example` defaults — edit `.env` afterwards if you want to change them.
+
+The script refuses to overwrite an existing `.env` unless you pass `--force`. Useful flags:
+
+```bash
+python scripts/init_env.py            # safe: refuse if .env exists
+python scripts/init_env.py --force    # regenerate (rotates secrets)
+python scripts/init_env.py --print    # preview without writing
+```
+
+(Bash users: `bash scripts/init-env.sh` is a thin wrapper around the same script.)
+
+#### Manual alternative (if Python isn't available)
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and at minimum change:
-- `INTERNAL_API_KEY` — anything other than `changeme` (otherwise auth between gateway and ML services is bypassed)
-- `JWT_SECRET` — long random string
+Then edit `.env` by hand and at minimum change:
+- `INTERNAL_API_KEY` — anything other than `changeme` (otherwise auth between gateway and ML services is bypassed — see [services/common/auth.py](moe-ids/services/common/auth.py))
+- `JWT_SECRET` — long random string (gateway and auth-svc must share this)
+
+Generators if you need fresh random values:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"      # for INTERNAL_API_KEY
+python -c "import secrets; print(secrets.token_urlsafe(48))"  # for JWT_SECRET
+```
 
 ### 1.4 Format the codebase once
 

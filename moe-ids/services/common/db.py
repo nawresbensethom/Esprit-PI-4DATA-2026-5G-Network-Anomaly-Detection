@@ -3,6 +3,7 @@ PostgreSQL prediction log writer. Used by the inference service to persist
 one row per batch request, and by the monitoring service to read them back
 for drift analysis.
 """
+
 from __future__ import annotations
 
 import logging

@@ -3,6 +3,7 @@ Internal API-key check used between the gateway and the ML microservices.
 The gateway injects X-Api-Key on every forwarded request; external callers
 never reach these services directly.
 """
+
 from __future__ import annotations
 
 from typing import Annotated

@@ -2,6 +2,7 @@
 WeightedCombiner custom Keras layer and gate model builder.
 Ported verbatim from Moe.ipynb — no logic changes.
 """
+
 from __future__ import annotations
 
 import tensorflow as tf
