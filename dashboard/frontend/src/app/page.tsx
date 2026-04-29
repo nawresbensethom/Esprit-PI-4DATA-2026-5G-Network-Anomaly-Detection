@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  redirect("/login");
+  // RoleGate on /dashboard handles the anonymous → /login bounce.
+  redirect("/dashboard");
 }

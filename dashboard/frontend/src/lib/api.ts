@@ -2,11 +2,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
 const TOKEN_KEY = "sentra_token";
 const USER_KEY = "sentra_user";
 
+export type Role = "security_analyst" | "admin" | "data_scientist";
+
 export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: "analyst" | "admin" | "ml_engineer";
+  role: Role;
   is_active: boolean;
 }
 
@@ -65,12 +67,36 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const resp = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!resp.ok) {
-    let detail: unknown;
-    try { detail = await resp.json(); } catch { detail = await resp.text(); }
-    const message = typeof detail === "object" && detail && "detail" in detail
-      ? String((detail as { detail: unknown }).detail)
-      : `HTTP ${resp.status}`;
-    throw new Error(message);
+    // Auto-redirect on expired/invalid JWT — token is dead, no point staying on the page
+    if (resp.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/")) {
+      clearSession();
+      window.location.href = "/login";
+      throw new Error("Session expired — please sign in again");
+    }
+    let body: unknown;
+    try { body = await resp.json(); } catch { body = await resp.text(); }
+
+    // Unwrap FastAPI-style {"detail": ...} where ... is a string OR a dict OR an array
+    let detail: unknown = body;
+    if (body && typeof body === "object" && "detail" in body) {
+      detail = (body as { detail: unknown }).detail;
+    }
+
+    let message: string;
+    if (typeof detail === "string") {
+      message = detail;
+    } else if (detail && typeof detail === "object") {
+      // Pretty-print the structured error so the user sees the real cause
+      try {
+        message = JSON.stringify(detail, null, 2);
+      } catch {
+        message = `HTTP ${resp.status}`;
+      }
+    } else {
+      message = `HTTP ${resp.status}`;
+    }
+
+    throw new Error(`HTTP ${resp.status} — ${message}`);
   }
   return resp.json() as Promise<T>;
 }
@@ -114,6 +140,49 @@ export interface ModelMetrics {
 
 export async function getModelMetrics(): Promise<ModelMetrics> {
   return request<ModelMetrics>("/api/predict/metrics");
+}
+
+// ── Local history persistence (no DB yet — Phase B) ──────────────────────
+
+const HISTORY_KEY = "sentra_history";
+const HISTORY_LIMIT = 50;
+
+export interface HistoryEntry {
+  request_id: string;
+  ts: number;                 // unix ms
+  filename: string;
+  schema: string;
+  n_rows: number;
+  attack_rate: number;
+  model_version: string;
+  user_email: string;
+  prediction: BatchPrediction;
+}
+
+export function listHistory(): HistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? (JSON.parse(raw) as HistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getHistoryEntry(requestId: string): HistoryEntry | null {
+  return listHistory().find((e) => e.request_id === requestId) ?? null;
+}
+
+export function appendHistory(entry: HistoryEntry): void {
+  if (typeof window === "undefined") return;
+  const all = listHistory();
+  all.unshift(entry);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(all.slice(0, HISTORY_LIMIT)));
+}
+
+export function clearHistory(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(HISTORY_KEY);
 }
 
 // ── Training ─────────────────────────────────────────────────────────────

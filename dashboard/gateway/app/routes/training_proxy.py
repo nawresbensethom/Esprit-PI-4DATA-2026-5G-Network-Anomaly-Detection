@@ -49,9 +49,9 @@ async def _forward(
 @router.post("/start")
 async def train_start(
     request: Request,
-    user: CurrentUser = Depends(require_roles("admin")),
+    user: CurrentUser = Depends(require_roles("admin", "data_scientist")),
 ):
-    """Kick off a training run. Admin only."""
+    """Kick off a training run. Admin or data_scientist."""
     return await _forward("POST", settings.TRAINING_SERVICE_URL, "/admin/train", request, user)
 
 

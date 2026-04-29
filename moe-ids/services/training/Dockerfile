@@ -15,12 +15,14 @@ COPY scripts/ scripts/
 COPY wheels/ wheels/
 RUN pip install --no-cache-dir --no-index --find-links=wheels/ \
     --prefix=/install \
-    tensorflow xgboost scikit-learn scipy numpy pandas \
+    tensorflow xgboost scipy numpy pandas \
     fastapi "uvicorn[standard]" prometheus-client psycopg2-binary \
     pydantic-settings python-multipart structlog
 
+# Pull sklearn from PyPI so the version pin is honoured even if wheels/ has
+# a different one cached locally.
 RUN pip install --no-cache-dir --timeout 120 --prefix=/install \
-    "mlflow-skinny>=2.8" "mlflow>=2.8" "httpx>=0.25"
+    "scikit-learn==1.6.1" "mlflow-skinny>=2.8" "mlflow>=2.8" "httpx>=0.25"
 
 # ── Stage 2: runtime image ────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime

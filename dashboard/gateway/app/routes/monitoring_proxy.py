@@ -43,9 +43,9 @@ async def _forward(method: str, path: str, request: Request, user: CurrentUser) 
 @router.post("/run")
 async def drift_run(
     request: Request,
-    user: CurrentUser = Depends(require_roles("admin")),
+    user: CurrentUser = Depends(require_roles("admin", "data_scientist")),
 ):
-    """Execute a drift check now. Admin only."""
+    """Execute a drift check now. Admin or data_scientist."""
     return await _forward("POST", "/drift", request, user)
 
 
