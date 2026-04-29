@@ -67,25 +67,29 @@ def save_all(artefacts: Artefacts, directory: Path) -> None:
 
 
 def load_all(directory: Path) -> Artefacts:
+    # Pickle loads below are bandit B301-flagged but safe in this context:
+    # the artefacts directory is a trusted volume written only by our own
+    # training pipeline (services/training/scripts/train.py). It is never
+    # populated from user uploads or any external source.
     directory = Path(directory)
 
     with open(directory / "manifest.pkl", "rb") as f:
-        manifest = pickle.load(f)
+        manifest = pickle.load(f)  # nosec B301 — trusted artefacts volume
 
     version = manifest["version"]
 
     with open(directory / "unified_scaler.pkl", "rb") as f:
-        scaler = pickle.load(f)
+        scaler = pickle.load(f)  # nosec B301 — trusted artefacts volume
 
     slice_experts: dict[str, XGBClassifier] = {}
     slice_calibrators: dict[str, LogisticRegression] = {}
     for name in ("eMBB", "mMTC", "URLLC"):
         with open(directory / f"slice_expert_{name}.pkl", "rb") as f:
-            slice_experts[name] = pickle.load(f)
+            slice_experts[name] = pickle.load(f)  # nosec B301 — trusted artefacts volume
         cal_path = directory / f"slice_calibrator_{name}.pkl"
         if cal_path.exists():
             with open(cal_path, "rb") as f:
-                slice_calibrators[name] = pickle.load(f)
+                slice_calibrators[name] = pickle.load(f)  # nosec B301 — trusted artefacts volume
 
     # WeightedCombiner must be importable at load time
     custom_objects = {"WeightedCombiner": WeightedCombiner}
@@ -99,7 +103,7 @@ def load_all(directory: Path) -> Artefacts:
         cal_path = directory / f"proto_calibrator_{name}.pkl"
         if cal_path.exists():
             with open(cal_path, "rb") as f:
-                proto_calibrators[name] = pickle.load(f)
+                proto_calibrators[name] = pickle.load(f)  # nosec B301 — trusted artefacts volume
 
     gate_model = tf.keras.models.load_model(
         str(directory / "gate_model.keras"),

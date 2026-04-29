@@ -7,10 +7,19 @@ import { getModelMetrics, type ModelMetrics, type User } from "@/lib/api";
 
 // Mirror of moe-ids/moe_ids/config.py defaults. Read-only here — the source
 // of truth lives in the Python settings; this page surfaces them for the jury.
-const PROMOTION_THRESHOLDS = [
-  { key: "min_f1",     label: "Minimum F1",     value: 0.90, severity: "ok" as const },
-  { key: "min_recall", label: "Minimum Recall", value: 0.95, severity: "ok" as const },
-  { key: "min_pr_auc", label: "Minimum PR-AUC", value: 0.92, severity: "ok" as const },
+type ThresholdRow = {
+  key: string;
+  label: string;
+  value: number;
+  // Typed accessor so we can compare against the live ModelMetrics without
+  // string-keyed casts (strict TS won't allow `model[k]` for an interface).
+  get: (m: ModelMetrics) => number | null | undefined;
+};
+
+const PROMOTION_THRESHOLDS: ThresholdRow[] = [
+  { key: "min_f1",     label: "Minimum F1",     value: 0.90, get: (m) => m.f1 },
+  { key: "min_recall", label: "Minimum Recall", value: 0.95, get: (m) => m.recall },
+  { key: "min_pr_auc", label: "Minimum PR-AUC", value: 0.92, get: (m) => m.pr_auc },
 ];
 
 const DRIFT_THRESHOLDS = [
@@ -98,7 +107,7 @@ function SettingsPage(_: { user: User }) {
               </thead>
               <tbody>
                 {PROMOTION_THRESHOLDS.map((t) => {
-                  const got = (model && (model as Record<string, unknown>)[t.key.replace("min_", "")]) as number | undefined;
+                  const got = model ? t.get(model) : undefined;
                   const passes = typeof got === "number" && got >= t.value;
                   return (
                     <tr key={t.key}>
