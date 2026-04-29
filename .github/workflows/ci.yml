@@ -33,6 +33,10 @@ jobs:
         working-directory: moe-ids
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Pull LFS payloads (test fixtures live in LFS — without this,
+          # pandas reads pointer files as CSVs and unit tests fail).
+          lfs: true
 
       - uses: actions/setup-python@v5
         with:
